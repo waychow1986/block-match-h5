@@ -115,6 +115,30 @@ describe('sound effects and mute (AC-14)', () => {
     expect(log.starts).toBeGreaterThan(before);
   });
 
+  it('plays a sound when the game-over dialog appears (sound on)', () => {
+    let before = -1;
+    for (let level = 0; level < 30 && before < 0; level++) {
+      for (let i = 0; i < 200 && game.state.phase === 'playing'; i++) {
+        tapMove();
+        if (game.state.phase !== 'playing') break;
+        settle();
+      }
+      if (game.state.phase === 'gameOver') {
+        before = log.starts;
+        expect(dialogButton()).toBeNull();
+        settle();
+      } else {
+        settle();
+        dialogButton()!.click();
+      }
+    }
+    expect(before).toBeGreaterThanOrEqual(0);
+    const dialog = root.querySelector('[role="dialog"][aria-modal="true"]')!;
+    expect(dialog.getAttribute('aria-label')).toBe('游戏结束');
+    expect(muteButton().getAttribute('aria-pressed')).toBe('false');
+    expect(log.starts).toBeGreaterThan(before);
+  });
+
   it('mute button stops playing sources, silences later moves, and unmute restores sound', () => {
     const btn = muteButton();
     expect(btn.tagName).toBe('BUTTON');

@@ -57,29 +57,11 @@ body {
   white-space: nowrap;
 }
 
-.stat-value,
-.stat-count {
+.stat-value {
   font-size: 20px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1.3;
-}
-
-/* The count-up is decorative; the status output keeps the final value for AT. */
-.stat-count {
-  display: none;
-}
-
-.stat.counting .stat-value {
-  color: transparent;
-}
-
-.stat.counting .stat-count {
-  display: block;
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 .mute {

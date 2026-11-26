@@ -76,7 +76,10 @@ test('AC-12 removal, fall and score are animated through intermediate states', a
   const removed = tile(page, grid, pick.cell);
   const falling = tile(page, grid, pick.above);
   await removed.evaluate((r, f) => {
-    const w = window as unknown as { samples: { opacity: number; top: number; float: string | null }[] };
+    const w = window as unknown as {
+      samples: { opacity: number; top: number; float: string | null; score: number }[];
+    };
+    const scoreEl = document.querySelector('[role="status"][aria-label="当前分数"]')!;
     w.samples = [];
     const t0 = performance.now();
     const step = (): void => {
@@ -84,6 +87,7 @@ test('AC-12 removal, fall and score are animated through intermediate states', a
         opacity: r.isConnected ? Number(getComputedStyle(r).opacity) : -1,
         top: (f as HTMLElement).getBoundingClientRect().top,
         float: document.querySelector('.score-float')?.textContent ?? null,
+        score: Number(scoreEl.textContent),
       });
       if (performance.now() - t0 < 1500) requestAnimationFrame(step);
     };
@@ -93,11 +97,17 @@ test('AC-12 removal, fall and score are animated through intermediate states', a
   await removed.click();
   await page.waitForTimeout(1600);
   const samples = await page.evaluate(
-    () => (window as unknown as { samples: { opacity: number; top: number; float: string | null }[] }).samples,
+    () =>
+      (window as unknown as { samples: { opacity: number; top: number; float: string | null; score: number }[] })
+        .samples,
   );
   const topAfter = samples.at(-1)!.top;
   expect(topAfter).toBeGreaterThan(topBefore + 1);
   expect(samples.some((s) => s.opacity > 0 && s.opacity < 1)).toBe(true);
   expect(samples.some((s) => s.top > topBefore + 1 && s.top < topAfter - 1)).toBe(true);
   expect(samples.some((s) => s.float === `+${10 * n * n}`)).toBe(true);
+  // The "当前分数" status text passes through intermediate values before the final one (TD-007).
+  const mids = new Set(samples.map((s) => s.score).filter((v) => v > 0 && v < 10 * n * n));
+  expect(mids.size).toBeGreaterThanOrEqual(2);
+  expect(samples.at(-1)!.score).toBe(10 * n * n);
 });

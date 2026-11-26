@@ -80,10 +80,13 @@ describe('controller (AC-1..AC-10, AC-13)', () => {
     const p = findMove(game.state.board)!;
     const n = findGroup(game.state.board, p).length;
     tap(tileEl(p));
-    expect(output('当前分数')).toBe(String(10 * n * n));
     expect(output('历史最高分')).toBe(String(10 * n * n));
     expect(localStorage.getItem(HIGH_SCORE_KEY)).toBe(String(10 * n * n));
     expect(root.querySelectorAll('button.tile')).toHaveLength(100 - n);
+    // "当前分数" counts up during the move animation (TD-007); it is final once the board is not busy.
+    vi.advanceTimersByTime(MOVE_SETTLE_MS + 10);
+    expect(board().getAttribute('aria-busy')).toBe('false');
+    expect(output('当前分数')).toBe(String(10 * n * n));
   });
 
   it('tapping a single tile changes nothing', () => {

@@ -92,6 +92,8 @@ export class GameController {
   }
 
   private setBusy(b: boolean): void {
+    // aria-busy="false" promises final HUD values, even if animation frames were throttled.
+    if (!b) this.hud.stopCount();
     this.busy = b;
     this.boardView.setBusy(b);
   }
@@ -148,6 +150,7 @@ export class GameController {
   }
 
   private showOutcome(): void {
+    this.hud.stopCount();
     const kind = this.state.phase === 'levelCleared' ? 'levelCleared' : 'gameOver';
     if (kind === 'levelCleared') this.sound.playLevelCleared();
     else this.sound.playGameOver();

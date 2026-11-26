@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountGame, type GameHandle } from '../../src/app';
 import { mulberry32 } from '../../src/game/rng';
-import { findGroup } from '../../src/game/board';
+import { findGroup, makeBoard, removeGroup } from '../../src/game/board';
 import { ROWS } from '../../src/game/levels';
-import { FALL_MS, FLOAT_MS, MOVE_SETTLE_MS, REMOVE_MS, SCORE_COUNT_MS } from '../../src/ui/timing';
+import { BoardView } from '../../src/ui/boardView';
+import { FALL_MS, FLOAT_MS, MOVE_SETTLE_MS, REMOVE_MS, SCORE_COUNT_MS, SHIFT_MS } from '../../src/ui/timing';
 import { findMove, findMoveWithFall, findSingle, highlighted, pointer, tapEl, tileIn } from './helpers';
 
 let root: HTMLElement;
@@ -129,19 +130,74 @@ describe('move animations (AC-12)', () => {
     expect(root.querySelector('.score-float')).toBeNull();
   });
 
-  it('the visible score counts up through intermediate values while the status text is final', () => {
+  it('the "当前分数" status text itself counts up through intermediate values to the final one', () => {
     const p = findMove(game.state.board)!;
     const n = findGroup(game.state.board, p).length;
     const gained = 10 * n * n;
+    const status = root.querySelector<HTMLElement>('[role="status"][aria-label="当前分数"]')!;
     tapEl(tile(p));
-    expect(root.querySelector('output[aria-label="当前分数"]')!.textContent).toBe(String(gained));
-    const shown = root.querySelector<HTMLElement>('.stat-score .stat-count')!;
-    expect(shown.getAttribute('aria-hidden')).toBe('true');
-    vi.advanceTimersByTime(SCORE_COUNT_MS / 2);
-    const mid = Number(shown.textContent);
-    expect(mid).toBeGreaterThan(0);
-    expect(mid).toBeLessThan(gained);
-    vi.advanceTimersByTime(SCORE_COUNT_MS);
-    expect(shown.textContent).toBe(String(gained));
+    const seen = new Set<number>([Number(status.textContent)]);
+    for (let t = 0; t < SCORE_COUNT_MS; t += 40) {
+      vi.advanceTimersByTime(40);
+      seen.add(Number(status.textContent));
+    }
+    const mids = [...seen].filter((v) => v > 0 && v < gained);
+    expect(mids.length).toBeGreaterThanOrEqual(2);
+    vi.advanceTimersByTime(MOVE_SETTLE_MS);
+    expect(board().getAttribute('aria-busy')).toBe('false');
+    expect(status.textContent).toBe(String(gained));
+  });
+
+  it('the score text is final once the board is no longer busy, even without animation frames', () => {
+    const p = findMove(game.state.board)!;
+    const n = findGroup(game.state.board, p).length;
+    const raf = window.requestAnimationFrame;
+    window.requestAnimationFrame = () => 0;
+    try {
+      tapEl(tile(p));
+      vi.advanceTimersByTime(MOVE_SETTLE_MS + 10);
+    } finally {
+      window.requestAnimationFrame = raf;
+    }
+    expect(board().getAttribute('aria-busy')).toBe('false');
+    expect(root.querySelector('[role="status"][aria-label="当前分数"]')!.textContent).toBe(String(10 * n * n));
+  });
+});
+
+describe('column shift animation (AC-12)', () => {
+  it('right-hand columns stay in place during remove and fall, then shift left with a non-zero transition', () => {
+    // Column 0 is a removable pair; removing it empties the column so columns 1 and 2 shift left.
+    const start = makeBoard([[0, 0], [1, 2, 3], [4]]);
+    const view = new BoardView(document, (ms, fn) => void setTimeout(fn, ms));
+    root.append(view.element);
+    view.sync(start);
+    const move = removeGroup(start, { col: 0, row: 0 })!;
+    expect(move.moved.length).toBe(4);
+    const byId = (id: number): HTMLElement => {
+      const pos = move.moved.find((m) => m.id === id)!.to;
+      return [...view.element.querySelectorAll<HTMLElement>('button.tile')].find(
+        (b) => view.positionOf(b)?.col === pos.col && view.positionOf(b)?.row === pos.row,
+      )!;
+    };
+    view.sync(move.board, move);
+    const col = (id: number): string => byId(id).style.getPropertyValue('--c');
+    for (const m of move.moved) {
+      expect(m.afterFall.col).toBe(m.from.col);
+      expect(m.to.col).toBe(m.from.col - 1);
+      expect(col(m.id)).toBe(String(m.from.col));
+    }
+
+    vi.advanceTimersByTime(REMOVE_MS + 5);
+    for (const m of move.moved) expect(col(m.id)).toBe(String(m.afterFall.col));
+    expect(parseFloat(view.element.style.getPropertyValue('--move-ms'))).toBe(FALL_MS);
+
+    vi.advanceTimersByTime(FALL_MS);
+    for (const m of move.moved) expect(col(m.id)).toBe(String(m.to.col));
+    const shiftMs = parseFloat(view.element.style.getPropertyValue('--move-ms'));
+    expect(shiftMs).toBe(SHIFT_MS);
+    expect(shiftMs).toBeGreaterThan(0);
+
+    vi.advanceTimersByTime(MOVE_SETTLE_MS);
+    view.element.remove();
   });
 });

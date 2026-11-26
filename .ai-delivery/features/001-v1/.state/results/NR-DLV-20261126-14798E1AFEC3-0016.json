@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S25",
+  "result": "done",
+  "summary": "修复 S26 两项审查问题：历史最高分写入前重新读取本机已保存值、只在更大时写入（读取失败按内存值），并为“游戏结束”提示画面补充断言（名称与标题“游戏结束”、显示当前分数、按钮“重新开始”）；复现单元测试修改前失败、修改后通过，游戏结束断言经两次临时篡改 overlay.ts（标题改“过关”、按钮改文字）均失败、恢复后通过；类型检查与构建通过，全量单元测试 48 项、集成测试 8 项全部通过（合计约 4 秒）；本批未新写或改动端到端用例，既有端到端用例未在会话中运行，交由 G3 独立测试验证。",
+  "asks": [],
+  "outputs": [
+    "src/storage/highScore.ts",
+    "tests/unit/highScore.test.ts",
+    "tests/integration/controller.test.ts"
+  ]
+}

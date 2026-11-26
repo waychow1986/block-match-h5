@@ -35,6 +35,35 @@ describe('high score store', () => {
     expect(s.data[HIGH_SCORE_KEY]).toBe('120');
   });
 
+  it('does not overwrite a higher value saved by another page after creation', () => {
+    const s = memoryStorage();
+    const store = createHighScoreStore(s);
+    s.data[HIGH_SCORE_KEY] = '5000';
+    expect(store.offer(300)).toBe(false);
+    expect(s.data[HIGH_SCORE_KEY]).toBe('5000');
+    expect(store.value).toBe(5000);
+    expect(store.offer(6000)).toBe(true);
+    expect(s.data[HIGH_SCORE_KEY]).toBe('6000');
+  });
+
+  it('uses the in-memory value when re-reading storage fails', () => {
+    let reads = 0;
+    const data: Record<string, string> = { [HIGH_SCORE_KEY]: '100' };
+    const flaky: StorageLike = {
+      getItem: (k) => {
+        if (reads++ > 0) throw new Error('SecurityError');
+        return data[k] ?? null;
+      },
+      setItem: (k, v) => {
+        data[k] = v;
+      },
+    };
+    const store = createHighScoreStore(flaky);
+    expect(store.offer(50)).toBe(false);
+    expect(store.offer(150)).toBe(true);
+    expect(data[HIGH_SCORE_KEY]).toBe('150');
+  });
+
   it('falls back to memory when storage throws on read and write', () => {
     const broken: StorageLike = {
       getItem: () => {

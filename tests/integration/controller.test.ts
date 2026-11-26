@@ -151,11 +151,28 @@ describe('controller (AC-1..AC-10, AC-13)', () => {
   });
 
   it('game over offers restart that keeps the high score', () => {
-    for (let i = 0; i < 30 && game.state.phase !== 'gameOver'; i++) {
+    let sawGameOver = false;
+    for (let i = 0; i < 30; i++) {
       playToLevelEnd();
-      root.querySelector<HTMLButtonElement>('[role="dialog"] button')!.click();
-      if (output('当前关卡') === '1') break;
+      const dialog = root.querySelector('[role="dialog"][aria-modal="true"]')!;
+      const btn = dialog.querySelector<HTMLButtonElement>('button')!;
+      if (game.state.phase === 'gameOver') {
+        sawGameOver = true;
+        expect(dialog.getAttribute('aria-label')).toBe('游戏结束');
+        expect(dialog.querySelector('h2')!.textContent).toBe('游戏结束');
+        expect(dialog.textContent).not.toContain('过关');
+        expect(dialog.textContent).toContain(String(game.state.score));
+        expect(dialog.textContent).toContain(output('当前分数'));
+        expect(btn.textContent).toBe('重新开始');
+        expect(dialog.closest('.board-wrap')).not.toBeNull();
+      } else {
+        expect(dialog.getAttribute('aria-label')).toBe('过关');
+        expect(btn.textContent).toBe('下一关');
+      }
+      btn.click();
+      if (sawGameOver) break;
     }
+    expect(sawGameOver).toBe(true);
     // Last click was 重新开始 when level went back to 1.
     expect(output('当前关卡')).toBe('1');
     expect(output('当前分数')).toBe('0');

@@ -29,6 +29,12 @@ export function createHighScoreStore(storage: StorageLike | null): HighScoreStor
       return value;
     },
     offer(score: number) {
+      // Re-read so a higher value saved by another page is never overwritten.
+      try {
+        value = Math.max(value, parse(storage?.getItem(HIGH_SCORE_KEY) ?? null));
+      } catch {
+        // Read failed: compare against the in-memory value only.
+      }
       if (score <= value) return false;
       value = score;
       try {

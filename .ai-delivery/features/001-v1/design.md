@@ -1,6 +1,6 @@
 # 方块消除小游戏：计分与关卡 技术方案
 
-> 依据：意图第 2 版（已在 G1 确认，含 Q1–Q4、R1–R5 的人工答案）、规格 `spec.md`（FR-001–FR-041、AC-1–AC-16、假设 A-1–A-12）、需求原文 `request.json`、项目宪章。本次没有 `g2Decisions`。
+> 依据：意图第 2 版（已在 G1 确认，含 Q1–Q4、R1–R5 的人工答案）、规格 `spec.md`（FR-001–FR-041、AC-1–AC-16、假设 A-1–A-12）、需求原文 `request.json`、项目宪章。`g2Decisions` 第 1 轮（I1–I15 与退回意见）。本版按 G2 退回意见与事项 I2 的回答修订：删除原 TD-012 与对外契约中的公开网址参数 `?seed=`，随机种子固定只在开发者测试内部满足；其余决定不变。I1（色觉辅助形状记号）已决定不纳入；I7–I15 确认的规格假设与本方案原有设计一致，无需改动。
 > 项目还没有系统现状（`.ai-delivery/system-current.md` 不存在）；仓库现状只有 `README.md` 与 `.ai-delivery/` 下的交付文件，没有任何代码、构建、测试、持续集成或部署脚本。本方案即为首个版本的全部技术设计。
 > 证据写法：“实验 E-n”的命令与观察结果只写在“快速验证指南”；“参考 X”指平台参考文档 `../reference/X`。
 
@@ -36,11 +36,11 @@
 
 | 约束 | 来源 | 设计响应 |
 |---|---|---|
-| 保持已批准的业务意图和范围 | 宪章“产品与架构” | 只实现 FR-001–FR-041；规格中“建议，未纳入”的条目一律不实现。唯一新增的可见入口 `?seed=` 见 TD-012 的理由，不改变任何已确认的产品行为 |
+| 保持已批准的业务意图和范围 | 宪章“产品与架构” | 只实现 FR-001–FR-041；规格与本方案中“建议，未纳入”的条目一律不实现（G2 I1、I3–I6 已决定不纳入）；不新增任何网址参数或其他玩家可见入口（G2 I2） |
 | 优先选择满足需求的最简单架构 | 宪章“产品与架构” | 纯前端静态页面 + 静态文件服务器；无后端、无数据库、无框架（原生 TypeScript + DOM） |
 | 记录重大决策与例外 | 宪章“产品与架构” | 见“技术决策与替代方案” |
 | 凭据留在服务端；绝不记录 secret 或客户内容 | 宪章“安全与隐私” | 本系统没有任何凭据与机密；不收集个人信息；nginx 访问日志只有请求行与状态码 |
-| 验证输入、最小权限 | 宪章“安全与隐私” | 校验 `?seed=` 与 `localStorage` 中读出的最高分（非法值丢弃）；容器以非 root UID 101 运行；CSP 只允许同源脚本 |
+| 验证输入、最小权限 | 宪章“安全与隐私” | 校验 `localStorage` 中读出的最高分（非法值丢弃）；容器以非 root UID 101 运行；CSP 只允许同源脚本 |
 | 每项用户可见能力都有可独立执行的验收场景 | 宪章“测试与质量” | “可测性约定”给出无障碍角色与名称、状态属性、本机存储键、音效可观测点；AC-5/AC-9 另有开发者检查可引用 |
 | 外部 integration 用真实测试服务 | 宪章“测试与质量” | 没有外部 integration；集成测试只替换浏览器内置的 `AudioContext`（happy-dom 没有它），不涉及外部服务 |
 | 不修改已有 CI/部署脚本 | 平台规则 | 仓库中没有，不新增 CI；部署只通过 `docs/deployment.json` |
@@ -70,13 +70,13 @@
 | TD-003 | 计分 S(n) = 10·n² | 严格递增；S(2N)=40N²=2×(S(N)+S(N))，满足“≥2 倍”；对任意拆分 n=a₁+…+a_k（k≥2，aᵢ≥2）有 n² = Σaᵢ² + 2Σ_{i<j}aᵢa_j > Σaᵢ²，满足严格大于；系数 10 让分数读起来更有分量 | n²（数值偏小）；k·n·(n−1)（S(2N) ÷ [2×(S(N)+S(N))] = (2N−1)/(2N−2)，N=2 时为 1.5，N 越大越接近 1，始终小于 2，不满足 FR-011）；指数计分（数值增长过快、难读） | 数学推导（本行理由）；单元测试 `tests/unit/scoring.test.ts` 按开发者检查验证 | FR-009–FR-012、AC-5、Q4 |
 | TD-004 | 关卡参数：棋盘 10 列 × 10 行（各关相同）；颜色种类 colors(L)=min(2+L, 5)，即 3、4、5、5…（上限 5）；本关需新得分数 d(L)=2000+500·(L−1)；本关目标分数（累计）target(L)=Σd = 2000·L + 250·L·(L−1)，即 2000、4500、7500、11000、15000… | 满足 FR-020（颜色不减、目标严格递增、需新得分数不减）与 FR-021（颜色封顶后只提高目标）；模拟显示第 1 关不会失败、一局在 6–10 关左右结束，难度递增可感知，且“游戏结束”在端到端测试中用约 9 关可触达 | d=2000+250(L−1)（一局中位 13 关，过长）；d=3000+200(L−1)（最少第 4 关就结束，早期挫败感强）；颜色上限 6（10×10 上 6 色时一关中位只得约 2200 分，后期几乎必然一关即结束） | 实验 E-1 | FR-003、FR-020、FR-021、AC-9、R3、Q3、A-1 |
 | TD-005 | 棋盘生成：每格从本关颜色中均匀随机取色；若生成结果少于 2 种颜色或没有任何可消除组，则用同一随机数流重新生成；最多 50 次，仍不满足时把左下角两个相邻方块设为同一颜色、把另一个方块改为另一种颜色后使用（实验中从未需要重试） | 保证 FR-003（至少 2 种颜色）且新关不会“一开始就结束” | 不校验（极小概率违反 FR-003）；按图案预置（单调） | 实验 E-1 | FR-003、FR-016 |
-| TD-006 | 随机数：mulberry32（32 位种子）；默认种子取 `crypto.getRandomValues`；URL 带合法 `?seed=` 时用该种子（见 TD-012） | 实现极短、可复现；不需要密码学强度 | `Math.random`（不可设种子，无法复现问题）；第三方库（无必要） | — （无不确定事实） | FR-003、可测性 |
+| TD-006 | 随机数：mulberry32（32 位种子），以函数参数注入逻辑层（`createGame(rng)`、`generateBoard(cols, rows, colors, rng)`）；页面运行时种子一律取 `crypto.getRandomValues`，不从网址或任何外部输入读取；单元测试与集成测试在代码内部传入固定种子的 `rng`（集成测试由测试代码直接调用 `src/app.ts` 导出的挂载函数 `mountGame(root, { rng })`，不经网址） | 实现极短；注入方式让开发者测试可重复，又不给玩家增加入口（G2 I2）；不需要密码学强度 | `Math.random` 全局（测试中无法固定棋盘）；公开网址参数 `?seed=`（原 TD-012，G2 I2 决定删除）；第三方库（无必要） | G2 I2 的回答 | FR-003、可测性 |
 | TD-007 | 动画：消除用 Web Animations API（缩小+淡出，180 ms）；下落与列靠拢用 CSS `transition: transform`（下落 240 ms，随后靠拢 200 ms，两段依次）；加分用“+N”浮字（700 ms，不阻塞）与当前分数在 400 ms 内按 `requestAnimationFrame` 递增到新值；所有时长集中在 `src/ui/timing.ts`；动画编排用定时等待（`setTimeout`），不依赖 `transitionend` | 满足 AC-12 的“连续过渡”；按定时等待推进，避免 `transitionend` 在元素被移除或时长为 0 时不触发导致卡死；总时长约 0.65 s，操作手感紧凑 | 全部用 JS 逐帧计算位置（代码量大）；用 `transitionend` 驱动（不可靠） | MDN Web Animations API / CSS transitions | FR-030–FR-033、A-2 |
 | TD-008 | 输入：只用 Pointer Events。`pointerdown` 记录起始方块并突出显示其组；`pointerup` 时用 `document.elementFromPoint` 取松开位置的方块，与起始方块相同才执行消除尝试；`pointercancel`/离开则取消。鼠标（`pointerType==='mouse'`）另在 `pointerover/pointerout` 时突出显示。棋盘设 `touch-action: none`、禁用长按菜单与文字选择；页面其余部分 `touch-action: manipulation` | 一套代码覆盖鼠标与触摸（FR-001/FR-002）；“同一方块按下并松开”满足 FR-002 与 A-4；禁止棋盘上的滚动/双击缩放避免轻点被浏览器吞掉 | 分别处理 mouse/touch 事件（重复代码、双触发）；用 `click`（触摸移动后松开仍可能触发，不满足 A-4） | MDN Pointer Events、`touch-action` | FR-001、FR-002、FR-027–FR-029、A-2、A-3、A-4 |
 | TD-009 | 测试框架：Vitest 5；单元测试在 Node 环境，集成测试在 happy-dom 环境 | Vitest 与 Vite 同源配置；happy-dom 的 Node 版本要求宽松（≥20），jsdom 31 要求 Node ≥22.22.2，执行环境 Node 22 的次版本未知 | jsdom（Node 次版本风险）；Jest（需另配 TS 转译） | 实验 E-3 | 可测性 |
 | TD-010 | 端到端测试：`@playwright/test` 精确锁定 `1.65.1`，只用 Chromium 项目（桌面 + 移动设备模拟两个 project）；不在命令中下载浏览器 | 与预装 Chromium 修订版 1255 匹配，离线可用 | 版本浮动（修订版不匹配时找不到浏览器）。**后备做法**：若 Agent Pod 中 `/ms-playwright`（或 `PLAYWRIGHT_BROWSERS_PATH`）下的 chromium 修订版不是 1255，编码时把版本改为 `browsers.json` 中修订版与之相同的版本（查法见快速验证 E-2），不改测试写法 | 实验 E-2 | 可测性、AC-1、AC-15 |
 | TD-011 | 静态检查：`tsc --noEmit`（TypeScript 5.9.x，`strict: true`、`noUncheckedIndexedAccess: true`）；不引入 ESLint | 类型检查已能发现大部分缺陷；减少依赖与版本兼容风险 | ESLint 10 + typescript-eslint（额外配置与依赖，收益有限）；TypeScript 7（新编译器，生态兼容性未验证） | 实验 E-3 | 可测性 |
-| TD-012 | 增加 URL 参数 `?seed=<0–4294967295 的十进制整数>`：给定时棋盘随机数流使用该种子（同一种子在同一浏览器中重新打开页面得到相同的关卡棋盘序列）；缺省或非法时忽略，行为与普通玩家完全一致 | 为可测性增加的产品能力：独立测试与缺陷复现需要可重复的棋盘（例如复现某次下落/靠拢错误、让测试证据可比对）；它不改变任何规则、界面或已确认行为，不暴露额外信息 | 不提供（测试仍可读 DOM 游玩，但失败无法复现）；测试专用端点/全局对象（违反“不为测试另加专用端点”） | — | FR-003、可测性 |
+| TD-012 | （已删除）原“公开网址参数 `?seed=`”决定按 G2 事项 I2 的回答删除；编号保留不复用，避免与 G2 记录混淆 | — | — | G2 I2 | — |
 | TD-013 | 音效：Web Audio API 用振荡器即时合成（消除：音高随消除数升高的短“叮”；过关：上行三音；游戏结束：下行三音），全部经一个主 `GainNode`；`AudioContext` 在首次 `pointerdown` 时创建/恢复；静音时把主音量置 0 并对正在播放的全部源节点调用 `stop()`，静音期间不创建也不启动新节点；取消静音只恢复主音量 | 无需音频素材（没有版权与加载问题）；满足 FR-036–FR-038 与 A-11；“立即停止正在播放的音效”由 `stop()` 保证 | 音频文件 + `<audio>`（素材授权与加载、iOS 上并发播放受限）；Howler.js 库（无必要） | MDN Web Audio API、Autoplay guide | FR-036–FR-038、AC-14、A-11 |
 | TD-014 | 静音状态只保存在页面内存（本次打开期间有效） | 规格 FR-038 只要求本次打开期间；跨次记住是“建议，未纳入” | 存 `localStorage`（超出已确认范围） | 规格 FR-038、范围外建议 | FR-038 |
 | TD-015 | 历史最高分：`localStorage` 键 `block-match.highScore`，值为非负整数的十进制字符串；页面加载时读取，非数字/负数/读取异常按 0（并以内存值继续）；每次消除计分后若当前分数 > 已保存值，立即写入（写入异常时只更新内存值，不提示） | 满足 FR-024（中途即保存）、FR-025、FR-026、A-10 | `IndexedDB`（对一个数值过重）；只在游戏结束时保存（违反 R1 答案） | MDN `localStorage` Exceptions | FR-024–FR-026、AC-10、R1、A-10 |
@@ -124,7 +124,7 @@ Coding 会创建的路径（全部为新建）：
 - `./package.json`、`./package-lock.json`：脚本 `dev`、`build`（`vite build`，产物 `dist/`）、`preview`、`typecheck`（`tsc --noEmit`）、`test:unit`、`test:integration`、`test:e2e`
 - `./tsconfig.json`、`./vite.config.ts`（Vitest 配置写在这里，用 `projects` 区分 unit 与 integration）、`./playwright.config.ts`
 - `./index.html`（视口 meta、HUD、棋盘容器、静音按钮、提示画面的静态骨架）
-- `src/main.ts`：组装与启动
+- `src/app.ts`：导出 `mountGame(root, { rng? })`，组装逻辑、表现、音效与存储（`rng` 缺省时用 `crypto.getRandomValues` 取种子，TD-006）；`src/main.ts`：页面入口，只调用 `mountGame(document.body)`，不读取网址参数
 - `src/game/`：`rng.ts`、`board.ts`（生成、找组、消除/下落/靠拢、`hasMoves`）、`scoring.ts`、`levels.ts`、`game.ts`（状态机：`start`、`tryRemove`、`nextLevel`、`restart`）
 - `src/ui/`：`controller.ts`（GameController：串起逻辑、动画、音效、存储、HUD；维护 `aria-busy` 与输入锁）、`boardView.ts`（方块 DOM 的创建/定位/移除）、`input.ts`（TD-008）、`hud.ts`（数值显示与计数动画）、`overlay.ts`（过关/游戏结束提示画面）、`timing.ts`（动画时长常量）、`anim.ts`（`Element.animate` 不可用时以定时器退化的包装）
 - `src/audio/sound.ts`（TD-013；没有 `AudioContext` 时为无声实现）
@@ -141,7 +141,7 @@ Coding 会创建的路径（全部为新建）：
 
 ## 数据流、状态、并发与生命周期
 
-1. 页面加载：读最高分（TD-015）→ 解析 `?seed=`（TD-012）→ `start()` 生成第 1 关（score=0）→ 渲染。进行中的进度从不保存（FR-023）。
+1. 页面加载：读最高分（TD-015）→ 以 `crypto.getRandomValues` 取种子创建 `rng`（TD-006）→ `start()` 生成第 1 关（score=0）→ 渲染。进行中的进度从不保存（FR-023）。
 2. 玩家按下方块：`phase !== 'playing'`（动画中或提示画面中）时忽略一切棋盘输入（A-2、FR-035）。否则突出显示该方块所在组（组大小 ≥2 时，FR-027–FR-029）。
 3. 在同一方块松开：`tryRemove(pos)`；单个方块或空位返回“无变化”（FR-005、FR-006）。有变化时：`phase='animating'`、棋盘 `aria-busy="true"` → 播放消除音效 → 计分并立即更新内存中的分数；若超过最高分立即写入存储（FR-024）→ 依次播放消除（180 ms）、下落（240 ms）、靠拢（200 ms）动画，同时 HUD 分数 400 ms 递增、“+N”浮字 → 动画结束：`aria-busy="false"`。
 4. 若 `levelEnded`：停顿 300 ms 后按 FR-017 判定，`score >= target` → `phase='levelCleared'`，过关音效与“过关”提示画面；否则 `phase='gameOver'`，游戏结束音效与“游戏结束”提示画面。否则 `phase='playing'`。
@@ -157,7 +157,7 @@ Coding 会创建的路径（全部为新建）：
 |---|---|---|
 | 页面入口 | `GET /` 返回游戏页面；静态资源在 `/assets/` 下 | `deploy/nginx.conf` |
 | 健康检查 | `GET /healthz` → `200`，正文 `ok` | `deploy/nginx.conf` |
-| URL 参数 | `?seed=<0–4294967295 的十进制整数>`（TD-012）；其他参数忽略 | `src/main.ts` |
+| URL 参数 | 无；页面不读取任何查询参数（G2 I2） | `src/main.ts`、`src/app.ts` |
 | 本机存储 | `localStorage['block-match.highScore']`：非负整数十进制字符串 | `src/storage/highScore.ts` |
 | 页面可访问结构 | 见下节“可测性约定” | `index.html`、`src/ui/` |
 
@@ -185,13 +185,13 @@ Coding 会创建的路径（全部为新建）：
 
 ### 造数与清理
 
-- 默认通过页面本身游玩造数：测试从各方块的可访问名称读出整个棋盘（颜色与位置），自行计算可消除组后点击；可用 `?seed=<整数>` 得到可复现的棋盘序列（TD-012）。
+- 默认通过页面本身游玩造数：测试从各方块的可访问名称读出整个棋盘（颜色与位置），自行计算可消除组后点击。棋盘每次打开随机生成，页面没有固定棋盘的入口（G2 I2）；端到端测试按读出的实际棋盘决定操作，不依赖特定棋盘形态。
 - 历史最高分：测试可以在自己的浏览器上下文中直接设置/读取 `localStorage['block-match.highScore']`（这是本机浏览器存储，不是共享数据）；Playwright 每个测试默认使用全新的浏览器上下文，无需清理。没有数据库，不存在直接改库。
 - 触达“游戏结束”：按 TD-004 的参数，一局通常在第 6–10 关结束（实验 E-1），测试可以一直选可消除组中最小的组游玩直到出现“游戏结束”提示画面；每关约 30–45 次消除，每次约 0.7 s 动画。
 
 ### 时间与随机性
 
-- 随机性：只有棋盘生成使用随机数；`?seed=` 固定它（TD-006、TD-012）。
+- 随机性：只有棋盘生成使用随机数。开发者测试在代码内部注入固定种子的 `rng`（单元测试直接传给 `src/game/` 的函数，集成测试经 `mountGame(root, { rng })`，TD-006）；需要特定棋盘形态的单元测试直接构造 `Board` 数据。独立测试与端到端测试无法、也不需要固定随机性，按页面上读出的实际棋盘行动。
 - 时间：游戏没有计时规则；动画时长为固定常量（`src/ui/timing.ts`）。测试以棋盘 `aria-busy="false"` 作为“动画结束、数值最终”的等待条件，不使用固定等待。集成测试用 Vitest 假定时器推进。
 
 ### 音效的可观测点（AC-14）
@@ -226,7 +226,7 @@ Coding 会创建的路径（全部为新建）：
 ## 安全、隐私、身份与 Secret
 
 - 无账号、无身份、无服务端数据；不收集个人信息；没有任何凭据或应用机密（`docs/dependencies.json` 的 `secrets` 为空）。
-- 输入校验：`?seed=` 只接受 `^\d{1,10}$` 且 ≤ 4294967295，否则忽略；`localStorage` 读出的最高分只接受非负安全整数，否则按 0。所有显示文本用 `textContent` 写入，不用 `innerHTML` 拼接。
+- 输入校验：页面不读取任何网址参数；`localStorage` 读出的最高分只接受非负安全整数，否则按 0。所有显示文本用 `textContent` 写入，不用 `innerHTML` 拼接。
 - 响应头与 CSP 见 TD-019；容器以 UID 101 非 root 运行（TD-018）。
 - 日志：nginx 访问日志只含请求行、状态码与 User-Agent，不含客户内容；前端不向任何地方上报数据。
 
@@ -277,11 +277,11 @@ Coding 会创建的路径（全部为新建）：
 ```bash
 npm ci
 npm run typecheck && npm run build && npm run test:unit && npm run test:integration
-npm run dev                              # 开发服务器，浏览器打开 http://localhost:5173/?seed=42
+npm run dev                              # 开发服务器，浏览器打开 http://localhost:5173/
 npx playwright test --project=desktop    # 端到端（自动构建并以 vite preview 启动）
 ```
 
-预期：全部命令退出码 0；`?seed=42` 两次打开页面得到相同的第 1 关棋盘。
+预期：全部命令退出码 0；页面可玩，两次打开得到不同的随机棋盘；带任意查询参数（例如 `/?seed=42`）打开时行为与不带参数完全相同。
 
 ### 实验 E-1：计分与关卡参数标定（U-1）
 
@@ -363,10 +363,11 @@ node -e 'const d=JSON.parse(require("fs").readFileSync("docs/deployment.json","u
 | 部署后健康检查失败 | 看容器 stderr 是否有 `[emerg]`（多为 `deploy/nginx.conf` 语法或监听端口不是 8080） | 修正配置后重新部署；或回滚到上一镜像 |
 | 页面空白 | 浏览器控制台是否有 CSP 拦截或 404 的 `/assets/*` | 确认 `dist/` 被复制到 `/usr/share/nginx/html`、CSP 与 TD-019 一致 |
 | 玩家反馈最高分丢失 | 是否清除了浏览器数据、使用隐私模式或换了浏览器（FR-026、A-10） | 属预期行为，无服务端数据可恢复 |
-| 某局出现规则错误 | 让玩家提供页面 URL 中的 `?seed=` 或用相同 seed 复现 | 按 seed 在本地复现并补单元测试 |
+| 某局出现规则错误 | 请玩家描述或截图出错前后的棋盘 | 在单元测试中直接构造该棋盘（`Board` 数据）复现，修正后保留该用例 |
 
 ## 开放决策
 
 - 待验证假设：无（U-1–U-3 均有实验结论）。TD-010（Playwright 版本）与 E-3 中的 Node 次版本依据的是本会话的镜像，已附后备做法，不影响产品行为。
 - 需要人决定的事项：无。
-- 建议，未纳入，待 G2 决定：为色觉障碍玩家在每种颜色的方块上叠加一个淡色的形状记号（如圆、三角、方、菱、星），进一步提高颜色可区分性。需求原文、意图与规格都没有提到，本方案未实现。
+- 已由 G2 决定：色觉辅助形状记号（I1）不纳入；公开网址参数 `?seed=`（I2）删除，原 TD-012 作废；I3–I6 的规格建议不纳入；I7–I15 的规格假设按推荐确认，本方案原设计（TD-007、TD-008、TD-015、TD-013、TD-016、TD-004）与之一致。
+- 建议，未纳入，待 G2 决定：无新增。

@@ -238,7 +238,7 @@ Coding 会创建的路径（全部为新建）：
 
 - 配置：无运行时配置与环境变量；nginx 配置随镜像发布（`deploy/nginx.conf`，监听 8080）。
 - 日志：沿用镜像默认——访问日志（`combined` 格式）写 stdout，错误日志写 stderr，错误日志行格式为 `YYYY/MM/DD HH:MM:SS [级别] pid#tid: 消息`。`/healthz` 关闭访问日志；`log_not_found off` 使 404 不写错误日志（避免把扫描/探测请求误报为错误）。
-- 错误日志识别规则（写在 `docs/deployment.json` 的 `operations.errorLogRules`，均为 `pattern` 规则，与样例日志行的匹配见实验 E-4）：
+- 错误日志识别规则（写在 `docs/deployment.json` 的 `operations.errorLogRules`，均为 `"kind": "pattern"` 规则，与样例日志行的匹配见实验 E-4）：
   - `nginx-critical`（high）：错误日志级别为 `emerg`/`alert`/`crit`，出现即报告（配置或进程级故障）。
   - `nginx-error`（medium）：错误日志级别为 `error`，10 分钟内 3 次才报告（例如文件权限、上游异常）。
   - `http-5xx`（high）：访问日志中响应状态为 5xx（静态服务正常情况下不应出现）。

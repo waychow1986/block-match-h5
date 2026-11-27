@@ -9,9 +9,22 @@
       "scenario" : "TS-01"
     },
     "lastRun" : {
-      "seconds" : 21,
-      "deliveryId" : "DLV-20261126-14798E1AFEC3",
-      "at" : "2026-11-26T16:01:21.118032800Z"
+      "seconds" : 31,
+      "deliveryId" : "DLV-20261127-5E1CB775C860",
+      "at" : "2026-11-27T04:05:35.600949400Z"
+    }
+  }, {
+    "id" : "SMK-002",
+    "title" : "手机只用手指滑动交换玩到一关结束，轻点按钮后继续用手指交换",
+    "path" : "SMK-002",
+    "source" : {
+      "deliveryId" : "DLV-20261127-5E1CB775C860",
+      "scenario" : "TS-02"
+    },
+    "lastRun" : {
+      "seconds" : 38,
+      "deliveryId" : "DLV-20261127-5E1CB775C860",
+      "at" : "2026-11-27T04:06:27.147995500Z"
     }
   } ]
 }

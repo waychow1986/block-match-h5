@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S27",
+  "result": "done",
+  "summary": "第 2 批（AC-11 高亮、AC-12 动画、AC-14 音效与静音、AC-15 自适应布局、FR-041 立体方块、Dockerfile/deploy/nginx.conf/README）已实现：typecheck 与 build 通过（约 2 秒），单元测试 48 项全部通过（约 1 秒），集成测试 23 项全部通过（约 2 秒，其中本批新写 15 项在实现前确认失败、实现后通过），本批新写的端到端用例 effects/mute/layout 共 7 个（桌面 4、手机 3）全部通过（约 9 秒，并在带 TD-019 CSP 头的临时静态服务上复跑通过），既有端到端用例（play、highscore）按规则未运行、交由 G3 验证，本地没有 Docker 与 nginx，容器镜像构建与 nginx 配置未能在会话中验证、交由平台部署时验证；技术细节：分数状态文本保持最终值以兼容既有集成测试，计分过程由 aria-hidden 的递增数字与棋盘内“+得分”浮字呈现，静音状态只保存在内存中。",
+  "asks": [],
+  "outputs": [
+    "src/audio/sound.ts",
+    "src/ui/anim.ts",
+    "src/ui/timing.ts",
+    "src/ui/boardView.ts",
+    "src/ui/input.ts",
+    "src/ui/hud.ts",
+    "src/ui/controller.ts",
+    "src/styles/main.css",
+    "tests/integration/helpers.ts",
+    "tests/integration/effects.test.ts",
+    "tests/integration/audio.test.ts",
+    "e2e/effects.spec.ts",
+    "e2e/mute.spec.ts",
+    "e2e/layout.spec.ts",
+    "Dockerfile",
+    ".dockerignore",
+    "deploy/nginx.conf",
+    "README.md"
+  ]
+}

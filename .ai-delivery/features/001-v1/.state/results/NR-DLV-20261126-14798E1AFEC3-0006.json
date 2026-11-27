@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S8",
+  "result": "done",
+  "summary": "按输入反馈修正部署声明：docs/deployment.json 中三条错误日志识别规则（nginx-critical、nginx-error、http-5xx）补上必填字段 \"kind\": \"pattern\"，design.md 中对应描述同步更新；其余技术方案（纯前端静态单页、计分 S(n)=10·n²、关卡难度递增、nginx-unprivileged 单服务部署、无外部依赖、可测性约定与开发者命令）不变。",
+  "asks": [],
+  "outputs": [
+    ".ai-delivery/features/001-v1/design.md",
+    ".ai-delivery/features/001-v1/runtime/deployment.json",
+    "docs/dependencies.json",
+    "docs/deployment.json"
+  ]
+}

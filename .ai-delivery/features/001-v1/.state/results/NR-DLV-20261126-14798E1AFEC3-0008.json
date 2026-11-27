@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S10",
+  "result": "done",
+  "summary": "技术方案之后细化计划：完整档，两批编码各接一次代码审查——第 1 批脚手架、规则、最高分、可玩界面与开发者检查（AC-1–10、13，约 70–75 分钟），第 2 批动画、突出显示、音效、自适应与容器部署文件（AC-11、12、14、15，约 60 分钟）；预算调整为 18 次会话、9 小时。",
+  "asks": [],
+  "outputs": [],
+  "plan": {
+    "schemaVersion": 1,
+    "steps": [
+      {
+        "id": "P1",
+        "capability": "code",
+        "zone": "build",
+        "dependsOn": [],
+        "batch": 1
+      },
+      {
+        "id": "P2",
+        "capability": "review",
+        "zone": "build",
+        "dependsOn": [
+          "P1"
+        ],
+        "batch": 1
+      },
+      {
+        "id": "P3",
+        "capability": "code",
+        "zone": "build",
+        "dependsOn": [
+          "P2"
+        ],
+        "batch": 2
+      },
+      {
+        "id": "P4",
+        "capability": "review",
+        "zone": "build",
+        "dependsOn": [
+          "P3"
+        ],
+        "batch": 2
+      }
+    ],
+    "omitted": [
+      {
+        "capability": "spec",
+        "reason": "规格已写成并覆盖 G1 全部人的答复（FR-001–FR-041），本次细化不需重做。"
+      },
+      {
+        "capability": "solution",
+        "reason": "技术方案已写成，含技术依赖与可测性约定，开放决策中无待人决定的技术事项，无需重做。"
+      },
+      {
+        "capability": "plan",
+        "reason": "本步骤即技术方案之后的细化计划，之后没有新的技术方案，不再安排计划。"
+      }
+    ],
+    "batches": [
+      {
+        "n": 1,
+        "criteria": [
+          "AC-1",
+          "AC-2",
+          "AC-3",
+          "AC-4",
+          "AC-5",
+          "AC-6",
+          "AC-7",
+          "AC-8",
+          "AC-9",
+          "AC-10",
+          "AC-13"
+        ]
+      },
+      {
+        "n": 2,
+        "criteria": [
+          "AC-11",
+          "AC-12",
+          "AC-14",
+          "AC-15"
+        ]
+      }
+    ],
+    "factors": [
+      {
+        "name": "change-size",
+        "lean": "medium",
+        "basis": "全新单页小游戏，规格 FR-001–FR-041，无后端"
+      },
+      {
+        "name": "modules",
+        "lean": "medium",
+        "basis": "同一前端应用内 game/、ui/、audio/、storage/，另有 Dockerfile 与 nginx 配置"
+      },
+      {
+        "name": "new-or-first",
+        "lean": "heavy",
+        "basis": "新项目，无系统现状与部署声明，首个交付"
+      },
+      {
+        "name": "risk",
+        "lean": "light",
+        "basis": "无数据迁移、无服务端数据与凭据，仅本机 localStorage 一个数值"
+      }
+    ],
+    "tier": "full",
+    "budget": {
+      "revisions": 4,
+      "sessions": 18,
+      "hours": 9.0
+    },
+    "items": [
+      {
+        "category": "business",
+        "question": "技术方案列为“建议，未纳入”的一项：为色觉障碍玩家在每种颜色的方块上叠加淡色形状记号（圆、三角、方、菱、星）。需求原文、意图与规格都没有这项，纳入会扩大范围并加入第 2 批编码。是否纳入本交付？",
+        "recommended": "不纳入，保持已确认的范围；需要时另提交付。",
+        "alternatives": [
+          "纳入，放在第 2 批编码与配色样式一起实现（预计增加约 10 分钟，批次数不变）。"
+        ]
+      }
+    ],
+    "reason": "档位：完整档（full），等于 tierFloor。四项依据：改动规模中等（全新单页小游戏，规格 FR-001–FR-041，无后端）；涉及模块中等（同一前端应用内的 game/ 规则、ui/ 渲染输入动画、audio/、storage/，另有 Dockerfile 与 nginx 配置）；新项目重（无系统现状与部署声明，首个交付）；数据迁移与安全风险轻（无迁移、无服务端数据与凭据，只有本机 localStorage 一个数值，CSP 等响应头已在技术方案定好）。依据综合倾向标准档，但 tierFloor 为完整档，按完整档给出。\n\n本次是技术方案之后的细化：规格、技术方案、测试计划均已写成，无需重做，设计区不再安排步骤。仍保留两批编码，每批之后各一次代码审查；测试环境、测试脚本、更新系统现状与各关口由平台按骨架补入。\n\n排序依据（技术方案“技术先后依赖”）：package.json/tsconfig/vite.config 先于一切测试与构建命令；src/game/（含变化描述结构）先于 ui/ 的动画编排与 GameController；无障碍角色、可见名称与 aria-busy/data-state 必须在端到端用例之前落到 ui/；Dockerfile 与 deploy/nginx.conf 依赖构建产物 dist/。因此脚手架、全部规则与 GameController 的骨架（含可测性约定的角色、名称、aria-busy 输入锁）放第 1 批；动画编排、突出显示、音效、自适应布局建立在其上放第 2 批。\n\n会话时限 90 分钟，每批留约 10 分钟写结果。用时口径：全量单元测试约 10 s、全量集成测试约 15 s（技术方案估计），每批按多次运行计入；本批新写的端到端用例按单独运行计入；既有端到端整套不运行、不计入。\n- 第 1 批（可玩的游戏核心）：AC-1、AC-2、AC-3、AC-4、AC-5、AC-6、AC-7、AC-8、AC-9、AC-10、AC-13。内容：工程脚手架（package.json/lock、tsconfig、vite.config 含 Vitest 两个 project、playwright.config、.gitignore）；src/game/（rng+?seed=、board 生成/找组/消除/下落/靠拢/hasMoves、scoring S(n)=10·n²、levels 按 TD-004、game 状态机）；src/storage/highScore.ts（中途即写入、异常退化）；index.html、main.ts、ui/ 的 controller（暂以瞬时更新 + aria-busy 输入锁）、boardView、input（Pointer Events，鼠标与触摸）、hud、overlay（过关/游戏结束对话框与“下一关/重新开始”）与基础样式；单元测试 scoring/levels/board/game/rng/highScore——其中包括测试计划引用的开发者检查 TS-11（scoring.test.ts，AC-5）、TS-16（game.test.ts，AC-7 的目标值界限与结束分支）、TS-19（levels.test.ts，AC-9，L=1…200）；集成测试 controller.test.ts（点击消除、HUD、最高分中途写入、提示画面与按钮）；端到端 play.spec.ts（desktop 与 mobile 各玩到本关结束、单块不消除）、highscore.spec.ts（重开页面仍显示最高分）与 helpers.ts。预计：实现约 50 分钟，单元与集成测试编写与多次全量运行约 12 分钟，新写端到端用例单独运行约 5 分钟（“玩到游戏结束并重新开始”单独运行约 3–5 分钟，接近上限时只运行其 desktop 一个场景），合计约 70–75 分钟。\n- 第 2 批（精致表现与适配）：AC-11、AC-12、AC-14、AC-15，以及规格按 R5 补充的配色与立体感（规格 AC-16/FR-041，由业务负责人目视确认，无自动判定部分）。内容：timing.ts、anim.ts 与 controller 的动画编排（消除 180 ms、下落 240 ms、靠拢 200 ms、+N 浮字与分数递增）；悬停/按住突出显示（data-state=highlighted）；audio/sound.ts（Web Audio 合成、消除/过关/游戏结束音效、静音按钮 aria-pressed 与 stop()）；自适应布局（cqw/dvh，无横向滚动）与方块立体感样式；Dockerfile、.dockerignore、deploy/nginx.conf（依赖第 1 批确定的 dist/，放在此批以平衡用时，并在测试环境步骤之前完成）；README 补充；集成测试 audio.test.ts 与 controller 的动画期间输入锁用例；端到端 mute/layout 与 play.spec 中的突出显示、动画中间状态用例。预计：实现约 45 分钟，单元与集成测试补充与全量运行约 8 分钟，新写端到端用例单独运行约 5 分钟，合计约 60 分钟。\n两批合并约 130 分钟，超出时限，故为两批（最少批数）；两批各自可独立验证：第 1 批后游戏已可完整游玩、计分、过关/结束与重开，第 2 批的表现层与适配可单独检查。用时均为估计值（可测性约定中单元/集成用时本身标为估计）。\n\n预算：剩余会话为编码 2、审查 2、测试环境、测试脚本、更新系统现状共 7 次，已用约 8 次（技术方案用了两次会话），另留修订 4 次；会话总数由 16 提高到 18，留出测试环境或测试脚本一次重跑的余量；用时编码每批约 1.5 小时、其余每次约 0.3–0.6 小时，连同已用部分提出 9 小时。\n\n按假设排批的业务细节：无新的业务细节需要假设，规格与技术方案已定棋盘 10×10、颜色 3→4→5 封顶、计分与目标公式、音效合成方式；均不改变批次。技术方案中“建议，未纳入”的色觉辅助形状记号超出意图，写入事项交人决定，推荐不纳入；若纳入，放进第 2 批（与配色样式同处），预计增加约 10 分钟，仍在时限内。"
+  }
+}

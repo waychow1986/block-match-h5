@@ -1,0 +1,8 @@
+.git
+.ai-delivery
+node_modules
+dist
+test-results
+playwright-report
+Dockerfile
+.dockerignore

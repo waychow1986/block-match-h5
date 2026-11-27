@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S27",
+  "result": "done",
+  "summary": "修复 S28 的三条审查问题：“当前分数”状态文本本身在约 400 毫秒内按 requestAnimationFrame 递增经过中间值、棋盘 aria-busy 变为 false（及出现提示画面）时保证为最终值，删除对辅助技术隐藏的递增数字与透明化样式；补充列靠拢分段（消除与下落阶段仍在原列、下落后才移到左列且过渡时长为 SHIFT_MS）与有声状态下游戏结束音效的集成测试；测试结果：复现测试修改前运行失败（“当前分数”中间值 0 个；靠拢与游戏结束音效两项在当前正确实现上通过，用临时变异“下落阶段直接放到靠拢后位置”“游戏结束音效为空操作”运行确认失败后已还原），修改后全部通过；typecheck 与 build 通过（约 2 秒），单元测试 48 项、集成测试 26 项全部通过（约 3 秒；其中 batch-1 用例“removing a group updates score…”按审查指示改为推进定时器到 aria-busy=false 后再断言精确的最终分数，最高分与本机保存仍在点击后立即断言），本批改动的端到端用例“AC-12 removal, fall and score…”（桌面）新增分数中间值取样，在旧代码构建上运行失败、修复后通过（约 3 秒），其余既有端到端用例按规则未运行、交由 G3 验证。",
+  "asks": [],
+  "outputs": [
+    "src/ui/hud.ts",
+    "src/ui/controller.ts",
+    "src/styles/main.css",
+    "tests/integration/effects.test.ts",
+    "tests/integration/audio.test.ts",
+    "tests/integration/controller.test.ts",
+    "e2e/effects.spec.ts"
+  ]
+}

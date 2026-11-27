@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "services": [
+    {
+      "name": "web",
+      "description": "方块消除小游戏的静态页面（nginx-unprivileged，非 root UID 101），提供 index.html、/assets/* 与 /healthz",
+      "build": {
+        "context": ".",
+        "file": "Dockerfile"
+      },
+      "port": 8080,
+      "healthPath": "/healthz",
+      "exposed": true
+    }
+  ],
+  "operations": {
+    "errorLogRules": [
+      {
+        "name": "nginx-critical",
+        "kind": "pattern",
+        "pattern": "\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2} \\[(?:emerg|alert|crit)\\] (?<message>.*)",
+        "severity": "high"
+      },
+      {
+        "name": "nginx-error",
+        "kind": "pattern",
+        "pattern": "\\d{4}/\\d{2}/\\d{2} \\d{2}:\\d{2}:\\d{2} \\[error\\] (?<message>.*)",
+        "severity": "medium",
+        "threshold": {
+          "windowMinutes": 10,
+          "count": 3
+        }
+      },
+      {
+        "name": "http-5xx",
+        "kind": "pattern",
+        "pattern": "\"(?<message>[A-Z]+ [^\"]* HTTP/[0-9.]+\" 5\\d\\d) ",
+        "severity": "high"
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S8",
+  "result": "done",
+  "summary": "按 G2 事项 I2 的回答与技术方案退回意见修订 design.md：删除 TD-012 与对外契约中的公开网址参数 ?seed=（页面不读取任何网址参数），随机数改为以 rng 参数注入逻辑层与 src/app.ts 的 mountGame，固定种子只在单元/集成测试代码内部使用；同步修改治理约束、数据流、可测性约定（造数、时间与随机性）、输入校验、快速验证与 Runbook，并在开放决策中记录 G2 已决定事项；其余决定、依赖声明与部署声明不变。",
+  "asks": [],
+  "outputs": [
+    ".ai-delivery/features/001-v1/design.md"
+  ]
+}

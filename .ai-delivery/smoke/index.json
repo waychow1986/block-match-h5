@@ -1,0 +1,17 @@
+{
+  "schemaVersion" : 1,
+  "cases" : [ {
+    "id" : "SMK-001",
+    "title" : "鼠标从打开页面玩到第 1 关结束并出现与分数相符的结束提示画面",
+    "path" : "SMK-001",
+    "source" : {
+      "deliveryId" : "DLV-20261126-14798E1AFEC3",
+      "scenario" : "TS-01"
+    },
+    "lastRun" : {
+      "seconds" : 21,
+      "deliveryId" : "DLV-20261126-14798E1AFEC3",
+      "at" : "2026-11-26T16:01:21.118032800Z"
+    }
+  } ]
+}

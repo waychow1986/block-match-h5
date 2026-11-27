@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { board, findGroup, groupAt, readGrid, readNumber, tile, waitSettled, type Cell, type Grid } from './helpers';
+import { board, findGroup, groupAt, readGrid, readNumber, tile, waitSettled, type Cell, type Grid } from './legacyHelpers';
 
 const highlightedCount = (page: Page): Promise<number> => board(page).locator('[data-state="highlighted"]').count();
 

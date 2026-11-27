@@ -126,8 +126,8 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 10%;
-  height: 10%;
+  width: 12.5%;
+  height: 12.5%;
   padding: 0;
   border: 2px solid transparent;
   border-radius: 18%;
@@ -150,6 +150,7 @@ body {
   pointer-events: none;
 }
 
+.tile[aria-pressed='true'],
 .tile[data-state='highlighted'] {
   z-index: 1;
   scale: 1.06;
@@ -176,6 +177,26 @@ body {
 .color-2 { --base: #30a46c; --hi: #6fcf9e; --lo: #237a50; }
 .color-3 { --base: #3e63dd; --hi: #7d97ee; --lo: #2d4bb0; }
 .color-4 { --base: #8e4ec6; --hi: #b88ae0; --lo: #6c3a99; }
+.color-5 { --base: #f76b15; --hi: #ffa057; --lo: #c4540f; }
+
+/* Special tiles (TD-002): row/col stripes and a multi-colour rainbow tile. */
+.tile[data-kind='row']::after,
+.tile[data-kind='col']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.tile[data-kind='row']::after {
+  background: linear-gradient(180deg, transparent 38%, rgb(255 255 255 / 85%) 38% 62%, transparent 62%);
+}
+.tile[data-kind='col']::after {
+  background: linear-gradient(90deg, transparent 38%, rgb(255 255 255 / 85%) 38% 62%, transparent 62%);
+}
+.tile[data-kind='rainbow'] {
+  background-image: conic-gradient(#e5484d, #f5b300, #30a46c, #3e63dd, #8e4ec6, #f76b15, #e5484d);
+}
 
 /* "+N" score float (TD-007). */
 .score-float {
@@ -227,6 +248,7 @@ body {
   font-size: 24px;
 }
 
+.overlay-level,
 .overlay-score {
   margin: 0;
   font-size: 18px;

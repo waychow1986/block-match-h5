@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { activate, findGroup, groupAt, readGrid, readNumber, tile, waitSettled } from './helpers';
+import { activate, findGroup, groupAt, readGrid, readNumber, tile, waitSettled } from './legacyHelpers';
 
 /** Counts Web Audio source starts/stops in the page (test-side instrumentation only). */
 async function instrument(page: Page): Promise<void> {

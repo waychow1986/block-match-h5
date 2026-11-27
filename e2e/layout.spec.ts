@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { activate, board, findGroup, readGrid, readNumber, stat, tile, waitSettled } from './helpers';
+import { activate, board, findGroup, readGrid, readNumber, stat, tile, waitSettled } from './legacyHelpers';
 
 async function expectFits(page: Page): Promise<void> {
   const m = await page.evaluate(() => {

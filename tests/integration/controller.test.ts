@@ -1,62 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountGame, type GameHandle } from '../../src/app';
 import { mulberry32 } from '../../src/game/rng';
-import { findGroup, type Board, type Pos } from '../../src/game/board';
-import { HIGH_SCORE_KEY } from '../../src/storage/highScore';
-import { LEVEL_END_PAUSE_MS, MOVE_SETTLE_MS } from '../../src/ui/timing';
+import { movesFor, targetFor } from '../../src/game/levels';
+import { HIGH_SCORE_KEY, LEVEL_KEY } from '../../src/storage/highScore';
+import { MOVE_SETTLE_MS } from '../../src/ui/timing';
+import { SETTLE_ALL_MS, firstMove, invalidSwap, tapEl, tapSwap, tileIn } from './helpers';
 
 let root: HTMLElement;
 let game: GameHandle;
 
-function output(name: string): string {
-  return root.querySelector(`output[aria-label="${name}"]`)!.textContent!;
+const output = (name: string): string => root.querySelector(`output[aria-label="${name}"]`)!.textContent!;
+const board = (): HTMLElement => root.querySelector('[role="group"][aria-label="棋盘"]')!;
+const dialog = (): HTMLElement | null => root.querySelector('[role="dialog"][aria-modal="true"]');
+const pressed = (): Element[] => [...root.querySelectorAll('button.tile[aria-pressed="true"]')];
+const settle = (): void => void vi.advanceTimersByTime(SETTLE_ALL_MS);
+
+function mount(seed = 42): void {
+  root = document.createElement('div');
+  document.body.append(root);
+  game = mountGame(root, { rng: mulberry32(seed) });
 }
-function board(): HTMLElement {
-  return root.querySelector('[role="group"][aria-label="棋盘"]')!;
-}
-function tileEl(p: Pos): HTMLButtonElement {
-  const label = new RegExp(`第${10 - p.row}行第${p.col + 1}列$`);
-  const el = [...root.querySelectorAll<HTMLButtonElement>('button.tile')].find((b) =>
-    label.test(b.getAttribute('aria-label')!),
-  );
-  if (!el) throw new Error(`no tile at ${JSON.stringify(p)}`);
-  return el;
-}
-function tap(el: Element): void {
-  const doc = el.ownerDocument;
-  const orig = doc.elementFromPoint;
-  doc.elementFromPoint = () => el;
-  el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, isPrimary: true }));
-  el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, isPrimary: true }));
-  doc.elementFromPoint = orig;
-}
-function findMove(b: Board, min = 2): Pos | null {
-  for (let c = 0; c < b.length; c++)
-    for (let r = 0; r < b[c]!.length; r++) if (findGroup(b, { col: c, row: r }).length >= min) return { col: c, row: r };
-  return null;
-}
-function findSingle(b: Board): Pos | null {
-  for (let c = 0; c < b.length; c++)
-    for (let r = 0; r < b[c]!.length; r++) if (findGroup(b, { col: c, row: r }).length === 1) return { col: c, row: r };
-  return null;
-}
-function settle(): void {
-  vi.advanceTimersByTime(MOVE_SETTLE_MS + LEVEL_END_PAUSE_MS + 10);
-}
-function playToLevelEnd(): void {
-  for (let i = 0; i < 200 && game.state.phase === 'playing'; i++) {
-    const p = findMove(game.state.board)!;
-    tap(tileEl(p));
+
+/** Plays the first valid swap until the level ends; returns the phase reached. */
+function playToLevelEnd(): string {
+  for (let i = 0; i < 100 && game.state.phase === 'playing'; i++) {
+    tapSwap(root, ...firstMove(game.state.grid));
     settle();
   }
+  return game.state.phase;
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
-  root = document.createElement('div');
-  document.body.append(root);
-  game = mountGame(root, { rng: mulberry32(42) });
+  mount();
 });
 afterEach(() => {
   game.destroy();
@@ -64,133 +41,131 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('controller (AC-1..AC-10, AC-13)', () => {
-  it('renders HUD and a full 10x10 board of named tile buttons', () => {
+describe('HUD and board (AC-2, AC-13)', () => {
+  it('shows level, level score, target, moves left and high score, and 64 named tiles', () => {
     expect(output('当前关卡')).toBe('1');
-    expect(output('当前分数')).toBe('0');
-    expect(output('本关目标分数')).toBe('2000');
+    expect(output('本关得分')).toBe('0');
+    expect(output('本关目标分数')).toBe(String(targetFor(1)));
+    expect(output('剩余步数')).toBe(String(movesFor(1)));
     expect(output('历史最高分')).toBe('0');
-    const tiles = root.querySelectorAll('button.tile');
-    expect(tiles).toHaveLength(100);
-    expect(tiles[0]!.getAttribute('aria-label')).toMatch(/^[红黄绿蓝紫]色方块，第\d+行第\d+列$/);
+    const tiles = [...root.querySelectorAll('button.tile')];
+    expect(tiles).toHaveLength(64);
+    for (const t of tiles) {
+      expect(t.getAttribute('aria-label')).toMatch(/^[红黄绿蓝紫橙]色方块，第[1-8]行第[1-8]列$/);
+      expect(t.getAttribute('data-kind')).toBe('normal');
+      expect(t.getAttribute('data-color')).toMatch(/^[0-4]$/);
+    }
+    expect(tileIn(root, { row: 0, col: 0 }).getAttribute('aria-label')).toMatch(/第1行第1列$/);
     expect(board().getAttribute('aria-busy')).toBe('false');
   });
+});
 
-  it('removing a group updates score and saves high score immediately', () => {
-    const p = findMove(game.state.board)!;
-    const n = findGroup(game.state.board, p).length;
-    tap(tileEl(p));
-    expect(output('历史最高分')).toBe(String(10 * n * n));
-    expect(localStorage.getItem(HIGH_SCORE_KEY)).toBe(String(10 * n * n));
-    expect(root.querySelectorAll('button.tile')).toHaveLength(100 - n);
-    // "当前分数" counts up during the move animation (TD-007); it is final once the board is not busy.
-    vi.advanceTimersByTime(MOVE_SETTLE_MS + 10);
-    expect(board().getAttribute('aria-busy')).toBe('false');
-    expect(output('当前分数')).toBe(String(10 * n * n));
+describe('tap to swap (A-11, AC-4)', () => {
+  it('first tap selects, tapping it again deselects, a non-adjacent tap moves the selection', () => {
+    const a = tileIn(root, { row: 0, col: 0 });
+    tapEl(a);
+    expect(pressed()).toEqual([a]);
+    tapEl(a);
+    expect(pressed()).toEqual([]);
+    tapEl(a);
+    const far = tileIn(root, { row: 5, col: 5 });
+    tapEl(far);
+    expect(pressed()).toEqual([far]);
+    expect(output('剩余步数')).toBe(String(movesFor(1)));
   });
 
-  it('tapping a single tile changes nothing', () => {
-    const p = findSingle(game.state.board)!;
-    tap(tileEl(p));
-    expect(output('当前分数')).toBe('0');
-    expect(root.querySelectorAll('button.tile')).toHaveLength(100);
-    expect(board().getAttribute('aria-busy')).toBe('false');
+  it('an adjacent swap that forms no line costs no move and keeps the board', () => {
+    const [a, b] = invalidSwap(game.state.grid)!;
+    const before = game.state.grid.flat().map((t) => t.id);
+    tapSwap(root, a, b);
+    expect(game.state.grid.flat().map((t) => t.id)).toEqual(before);
+    expect(output('剩余步数')).toBe(String(movesFor(1)));
+    expect(output('本关得分')).toBe('0');
+    expect(pressed()).toEqual([]);
   });
 
-  it('ignores input while busy (no queue)', () => {
-    const first = findMove(game.state.board)!;
-    tap(tileEl(first));
+  it('a valid swap costs one move, scores, and saves the high score under the new key (AC-18)', () => {
+    tapSwap(root, ...firstMove(game.state.grid));
+    const score = game.state.score;
+    expect(score).toBeGreaterThan(0);
+    expect(output('剩余步数')).toBe(String(movesFor(1) - 1));
+    expect(output('历史最高分')).toBe(String(score));
+    expect(localStorage.getItem(HIGH_SCORE_KEY)).toBe(String(score));
+    expect(localStorage.getItem('block-match.highScore')).toBeNull();
+    settle();
+    expect(board().getAttribute('aria-busy')).toBe('false');
+    expect(output('本关得分')).toBe(String(score));
+    expect(root.querySelectorAll('button.tile')).toHaveLength(64);
+  });
+
+  it('ignores swaps while busy (no queue, A-12)', () => {
+    tapSwap(root, ...firstMove(game.state.grid));
     expect(board().getAttribute('aria-busy')).toBe('true');
-    const scoreAfterFirst = game.state.score;
-    const second = findMove(game.state.board);
-    if (second) tap(tileEl(second));
-    expect(game.state.score).toBe(scoreAfterFirst);
-    vi.advanceTimersByTime(MOVE_SETTLE_MS + 10);
-    if (game.state.phase === 'playing') expect(board().getAttribute('aria-busy')).toBe('false');
-    expect(game.state.score).toBe(scoreAfterFirst);
+    const moves = game.state.movesLeft;
+    tapSwap(root, ...firstMove(game.state.grid));
+    expect(game.state.movesLeft).toBe(moves);
+    settle();
+    expect(game.state.movesLeft).toBe(moves);
+    expect(MOVE_SETTLE_MS).toBeGreaterThan(0);
   });
+});
 
-  it('requires pointerdown and pointerup on the same tile', () => {
-    const p = findMove(game.state.board)!;
-    const other = findSingle(game.state.board)!;
-    const a = tileEl(p);
-    const b = tileEl(other);
-    const orig = document.elementFromPoint;
-    document.elementFromPoint = () => b;
-    a.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
-    a.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));
-    document.elementFromPoint = orig;
-    expect(game.state.score).toBe(0);
-    a.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
-    a.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
-    expect(game.state.score).toBe(0);
-  });
-
-  it('shows the outcome dialog after the level ends and continues/restarts', () => {
-    playToLevelEnd();
-    const phase = game.state.phase;
-    const dialog = root.querySelector('[role="dialog"][aria-modal="true"]')!;
-    expect(dialog).not.toBeNull();
-    // Dialog lives inside the board container so it covers the board.
-    expect(dialog.closest('.board-wrap')).not.toBeNull();
-    const finalScore = game.state.score;
-    expect(dialog.textContent).toContain(String(finalScore));
-    if (phase === 'levelCleared') {
-      expect(dialog.getAttribute('aria-label')).toBe('过关');
-      (dialog.querySelector('button') as HTMLButtonElement).click();
-      expect(output('当前关卡')).toBe('2');
-      expect(output('本关目标分数')).toBe('4500');
-      expect(output('当前分数')).toBe(String(finalScore));
-    } else {
-      expect(dialog.getAttribute('aria-label')).toBe('游戏结束');
-      (dialog.querySelector('button') as HTMLButtonElement).click();
-      expect(output('当前关卡')).toBe('1');
-      expect(output('当前分数')).toBe('0');
-      expect(output('历史最高分')).toBe(String(finalScore));
-    }
-    expect(root.querySelector('[role="dialog"]')).toBeNull();
-    expect(root.querySelectorAll('button.tile')).toHaveLength(100);
-    expect(board().getAttribute('aria-busy')).toBe('false');
-  });
-
-  it('game over offers restart that keeps the high score', () => {
-    let sawGameOver = false;
-    for (let i = 0; i < 30; i++) {
-      playToLevelEnd();
-      const dialog = root.querySelector('[role="dialog"][aria-modal="true"]')!;
-      const btn = dialog.querySelector<HTMLButtonElement>('button')!;
-      if (game.state.phase === 'gameOver') {
-        sawGameOver = true;
-        expect(dialog.getAttribute('aria-label')).toBe('游戏结束');
-        expect(dialog.querySelector('h2')!.textContent).toBe('游戏结束');
-        expect(dialog.textContent).not.toContain('过关');
-        expect(dialog.textContent).toContain(String(game.state.score));
-        expect(dialog.textContent).toContain(output('当前分数'));
-        expect(btn.textContent).toBe('重新开始');
-        expect(dialog.closest('.board-wrap')).not.toBeNull();
-      } else {
-        expect(dialog.getAttribute('aria-label')).toBe('过关');
+describe('level end (AC-11, AC-12, AC-14)', () => {
+  it('clearing a level stores the reached level; failing offers a retry of the same level', () => {
+    let sawClear = false;
+    let sawFail = false;
+    for (let i = 0; i < 20 && !(sawClear && sawFail); i++) {
+      const level = game.state.level;
+      const phase = playToLevelEnd();
+      const d = dialog()!;
+      expect(d.closest('.board-wrap')).not.toBeNull();
+      expect(d.textContent).toContain(`第 ${level} 关`);
+      expect(d.textContent).toContain(`本关得分 ${game.state.score}`);
+      const btn = d.querySelector('button')!;
+      if (phase === 'levelCleared') {
+        sawClear = true;
+        expect(d.getAttribute('aria-label')).toBe('过关');
         expect(btn.textContent).toBe('下一关');
+        expect(localStorage.getItem(LEVEL_KEY)).toBe(String(level + 1));
+        btn.click();
+        expect(output('当前关卡')).toBe(String(level + 1));
+      } else {
+        sawFail = true;
+        expect(d.getAttribute('aria-label')).toBe('本关失败');
+        expect(btn.textContent).toBe('重玩本关');
+        btn.click();
+        expect(output('当前关卡')).toBe(String(level));
+        expect(output('剩余步数')).toBe(String(movesFor(level)));
       }
-      btn.click();
-      if (sawGameOver) break;
+      expect(output('本关得分')).toBe('0');
+      expect(dialog()).toBeNull();
+      expect(board().getAttribute('aria-busy')).toBe('false');
     }
-    expect(sawGameOver).toBe(true);
-    // Last click was 重新开始 when level went back to 1.
-    expect(output('当前关卡')).toBe('1');
-    expect(output('当前分数')).toBe('0');
-    expect(Number(output('历史最高分'))).toBeGreaterThan(0);
-    expect(localStorage.getItem(HIGH_SCORE_KEY)).toBe(output('历史最高分'));
+    expect(sawClear || sawFail).toBe(true);
   });
 
-  it('loads a stored high score on mount and keeps the larger value', () => {
+  it('starts at the stored reached level and shows the stored high score (AC-14)', () => {
     game.destroy();
-    root.replaceChildren();
+    root.remove();
+    localStorage.setItem(LEVEL_KEY, '4');
     localStorage.setItem(HIGH_SCORE_KEY, '99999');
-    game = mountGame(root, { rng: mulberry32(7) });
+    mount(7);
+    expect(output('当前关卡')).toBe('4');
+    expect(output('本关目标分数')).toBe(String(targetFor(4)));
+    expect(output('剩余步数')).toBe(String(movesFor(4)));
     expect(output('历史最高分')).toBe('99999');
-    tap(tileEl(findMove(game.state.board)!));
+    tapSwap(root, ...firstMove(game.state.grid));
     expect(localStorage.getItem(HIGH_SCORE_KEY)).toBe('99999');
-    expect(output('历史最高分')).toBe('99999');
+  });
+
+  it('starts at level 1 when storage is unavailable', () => {
+    game.destroy();
+    root.remove();
+    root = document.createElement('div');
+    document.body.append(root);
+    game = mountGame(root, { rng: mulberry32(3), storage: null });
+    expect(output('当前关卡')).toBe('1');
+    tapSwap(root, ...firstMove(game.state.grid));
+    expect(Number(output('历史最高分'))).toBeGreaterThan(0);
   });
 });

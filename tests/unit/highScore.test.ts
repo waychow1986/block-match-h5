@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HIGH_SCORE_KEY, createHighScoreStore, type StorageLike } from '../../src/storage/highScore';
+import {
+  HIGH_SCORE_KEY,
+  LEVEL_KEY,
+  createHighScoreStore,
+  createLevelStore,
+  type StorageLike,
+} from '../../src/storage/highScore';
 
 function memoryStorage(initial: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...initial };
@@ -83,5 +89,44 @@ describe('high score store', () => {
     const store = createHighScoreStore(null);
     expect(store.offer(10)).toBe(true);
     expect(store.value).toBe(10);
+  });
+});
+
+describe('new game keys (AC-14, AC-18)', () => {
+  it('uses the swap-match keys and ignores the old block-match high score', () => {
+    expect(HIGH_SCORE_KEY).toBe('swap-match.highScore');
+    expect(LEVEL_KEY).toBe('swap-match.level');
+    const s = memoryStorage({ 'block-match.highScore': '9000' });
+    const store = createHighScoreStore(s);
+    expect(store.value).toBe(0);
+    expect(store.offer(10)).toBe(true);
+    expect(s.data['block-match.highScore']).toBe('9000');
+    expect(s.data['swap-match.highScore']).toBe('10');
+  });
+
+  it.each([
+    [undefined, 1],
+    ['0', 1],
+    ['abc', 1],
+    ['-2', 1],
+    ['3', 3],
+  ])('level store reads %j as %d', (raw, expected) => {
+    const s = memoryStorage(raw === undefined ? {} : { [LEVEL_KEY]: raw });
+    expect(createLevelStore(s).value).toBe(expected);
+  });
+
+  it('level store only ever increases', () => {
+    const s = memoryStorage({ [LEVEL_KEY]: '4' });
+    const store = createLevelStore(s);
+    expect(store.offer(3)).toBe(false);
+    expect(store.offer(5)).toBe(true);
+    expect(s.data[LEVEL_KEY]).toBe('5');
+  });
+
+  it('level store works without storage', () => {
+    const store = createLevelStore(null);
+    expect(store.value).toBe(1);
+    expect(store.offer(2)).toBe(true);
+    expect(store.value).toBe(2);
   });
 });

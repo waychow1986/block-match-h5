@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { activate, board, findGroup, groupAt, playToLevelEnd, readGrid, readNumber, stat, tile, waitSettled } from './helpers';
+import { activate, board, findGroup, groupAt, playToLevelEnd, readGrid, readNumber, stat, tile, waitSettled } from './legacyHelpers';
 
 test.describe('play (AC-1..AC-7)', () => {
   test('plays from opening the page to the end of the level', async ({ page, isMobile }) => {

@@ -1,8 +1,9 @@
-import { findGroup, type MoveResult, type Pos } from '../game/board';
+import { isAdjacent, samePos, tileAt, type Pos } from '../game/board';
+import type { Resolution } from '../game/cascade';
 import { COLS, ROWS } from '../game/levels';
-import { createGame, nextLevel, restart, tryRemove, type GameState } from '../game/game';
+import { createGame, nextLevel, retryLevel, swapTiles, type GameState } from '../game/game';
 import type { Rng } from '../game/rng';
-import type { HighScoreStore } from '../storage/highScore';
+import type { MaxStore } from '../storage/highScore';
 import { createSound, type Sound } from '../audio/sound';
 import { BoardView } from './boardView';
 import { Hud } from './hud';
@@ -26,6 +27,8 @@ export class GameController {
   private readonly wrap: HTMLElement;
   private readonly sound: Sound;
   private busy = false;
+  /** First tile of a tap-tap swap (A-11). */
+  private selected: Pos | null = null;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private detachInput: () => void;
   private readonly unlockAudio = (): void => this.sound.unlock();
@@ -33,9 +36,10 @@ export class GameController {
   constructor(
     private readonly doc: Document,
     private readonly rng: Rng,
-    private readonly highScore: HighScoreStore,
+    private readonly highScore: MaxStore,
+    private readonly reachedLevel: MaxStore,
   ) {
-    this.state = createGame(rng);
+    this.state = createGame(rng, Math.max(1, reachedLevel.value));
     this.sound = createSound(doc.defaultView);
     this.element = doc.createElement('main');
     this.element.className = 'game';
@@ -53,12 +57,7 @@ export class GameController {
     this.element.append(this.hud.element, area);
     const tileOf = (el: Element | null): HTMLElement | null =>
       this.boardView.positionOf(el) ? (el!.closest('.tile') as HTMLElement) : null;
-    this.detachInput = attachTapInput(
-      this.boardView.element,
-      tileOf,
-      (tile) => this.onTap(tile),
-      (tile) => this.highlight(tile),
-    );
+    this.detachInput = attachTapInput(this.boardView.element, tileOf, (tile) => this.onTap(tile));
     // Audio may only start after a user gesture (A-11): create/resume it on the first press.
     doc.addEventListener('pointerdown', this.unlockAudio, true);
     this.render();
@@ -81,12 +80,15 @@ export class GameController {
     return btn;
   }
 
-  private render(move?: MoveResult): void {
-    this.boardView.sync(this.state.board, move);
+  private render(): void {
+    this.boardView.sync(this.state.grid);
+    this.selected = null;
+    this.boardView.select(null);
     this.hud.update({
       level: this.state.level,
       score: this.state.score,
       target: this.state.target,
+      movesLeft: this.state.movesLeft,
       highScore: this.highScore.value,
     });
   }
@@ -106,56 +108,72 @@ export class GameController {
     this.timers.add(t);
   }
 
-  /** Highlights the whole group under `tile` when it is removable (≥2); otherwise clears. */
-  private highlight(tile: HTMLElement | null): void {
-    const pos = tile && !this.busy && this.state.phase === 'playing' ? this.boardView.positionOf(tile) : null;
-    const group = pos ? findGroup(this.state.board, pos) : [];
-    const ids = group.length >= 2 ? group.map((p) => this.state.board[p.col]![p.row]!.id) : [];
-    this.boardView.highlight(ids);
-  }
-
+  /**
+   * Tap selection (A-11): the first tap selects, tapping it again deselects,
+   * an adjacent tap tries the swap, a non-adjacent tap moves the selection.
+   */
   private onTap(tile: HTMLElement): void {
     if (this.busy || this.state.phase !== 'playing') return;
     const pos = this.boardView.positionOf(tile);
     if (!pos) return;
-    const before = this.state.score;
-    const outcome = tryRemove(this.state, pos);
-    if (!outcome) return;
-    this.state = outcome.state;
-    this.highScore.offer(this.state.score);
-    this.setBusy(true);
-    this.render(outcome.result);
-    this.hud.countScore(before, this.state.score, SCORE_COUNT_MS);
-    this.showGain(outcome.result);
-    this.sound.playRemove(outcome.result.removed.length);
-    if (this.state.phase === 'playing') {
-      this.later(MOVE_SETTLE_MS, () => this.setBusy(false));
+    const first = this.selected;
+    if (!first || (!samePos(first, pos) && !isAdjacent(first, pos))) {
+      this.selected = pos;
+      this.boardView.select(tileAt(this.state.grid, pos)!.id);
       return;
     }
-    this.later(MOVE_SETTLE_MS + LEVEL_END_PAUSE_MS, () => this.showOutcome());
+    this.selected = null;
+    this.boardView.select(null);
+    if (!samePos(first, pos)) this.trySwap(first, pos);
+  }
+
+  /** Invalid swaps change nothing and cost no move (AC-4). */
+  private trySwap(a: Pos, b: Pos): void {
+    const outcome = swapTiles(this.state, a, b, this.rng);
+    if (outcome.kind === 'invalid') return;
+    const before = this.state.score;
+    this.state = outcome.state;
+    this.highScore.offer(this.state.score);
+    if (this.state.phase === 'levelCleared') this.reachedLevel.offer(this.state.level + 1);
+    this.setBusy(true);
+    this.render();
+    this.hud.countScore(before, this.state.score, SCORE_COUNT_MS);
+    this.showGain(outcome.resolution);
+    outcome.resolution.steps.forEach((step, i) => {
+      const play = (): void => this.sound.playRemove(step.removed.length);
+      if (i === 0) play();
+      else this.later(i * MOVE_SETTLE_MS, play);
+    });
+    const settle = Math.max(1, outcome.resolution.steps.length) * MOVE_SETTLE_MS;
+    if (this.state.phase === 'playing') {
+      this.later(settle, () => this.setBusy(false));
+      return;
+    }
+    this.later(settle + LEVEL_END_PAUSE_MS, () => this.showOutcome());
   }
 
   /** "+N" float at the centre of the removed group, inside the board container (TD-007). */
-  private showGain(result: MoveResult): void {
-    const ps: Pos[] = result.removed.map((r) => r.pos);
+  private showGain(resolution: Resolution): void {
+    const ps: Pos[] = resolution.steps[0]?.removed.map((r) => r.pos) ?? [];
+    if (ps.length === 0) return;
     const cx = ps.reduce((s, p) => s + p.col, 0) / ps.length;
     const cy = ps.reduce((s, p) => s + p.row, 0) / ps.length;
     const el = this.doc.createElement('div');
     el.className = 'score-float';
-    el.textContent = `+${result.gained}`;
+    el.textContent = `+${resolution.gained}`;
     el.style.left = `${((cx + 0.5) / COLS) * 100}%`;
-    el.style.top = `${((ROWS - 0.5 - cy) / ROWS) * 100}%`;
+    el.style.top = `${((cy + 0.5) / ROWS) * 100}%`;
     this.wrap.append(el);
     this.later(FLOAT_MS, () => el.remove());
   }
 
   private showOutcome(): void {
     this.hud.stopCount();
-    const kind = this.state.phase === 'levelCleared' ? 'levelCleared' : 'gameOver';
+    const kind = this.state.phase === 'levelCleared' ? 'levelCleared' : 'levelFailed';
     if (kind === 'levelCleared') this.sound.playLevelCleared();
     else this.sound.playGameOver();
-    this.overlay.show(kind, this.state.score, () => {
-      this.state = kind === 'levelCleared' ? nextLevel(this.state, this.rng) : restart(this.state, this.rng);
+    this.overlay.show(kind, this.state.level, this.state.score, () => {
+      this.state = kind === 'levelCleared' ? nextLevel(this.state, this.rng) : retryLevel(this.state, this.rng);
       this.render();
       this.setBusy(false);
     });

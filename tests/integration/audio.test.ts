@@ -1,8 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountGame, type GameHandle } from '../../src/app';
 import { mulberry32 } from '../../src/game/rng';
-import { LEVEL_END_PAUSE_MS, MOVE_SETTLE_MS } from '../../src/ui/timing';
-import { findMove, pointer, tapEl, tileIn } from './helpers';
+import { SETTLE_ALL_MS, firstMove, pointer, tapSwap } from './helpers';
 
 /** Minimal stand-in for the browser's Web Audio API (happy-dom has none). */
 class FakeParam {
@@ -67,9 +66,9 @@ const muteButton = (): HTMLButtonElement => root.querySelector('button[aria-labe
 const dialogButton = (): HTMLButtonElement | null =>
   root.querySelector<HTMLButtonElement>('[role="dialog"][aria-modal="true"] button');
 const settle = (): void => {
-  vi.advanceTimersByTime(MOVE_SETTLE_MS + LEVEL_END_PAUSE_MS + 10);
+  vi.advanceTimersByTime(SETTLE_ALL_MS);
 };
-const tapMove = (): void => tapEl(tileIn(root, findMove(game.state.board)!));
+const tapMove = (): void => tapSwap(root, ...firstMove(game.state.grid));
 
 function mount(): void {
   root = document.createElement('div');
@@ -102,7 +101,7 @@ describe('sound effects and mute (AC-14)', () => {
     expect(log.contexts).toHaveLength(1);
   });
 
-  it('plays a sound when the level-cleared or game-over dialog appears', () => {
+  it('plays a sound when the level-cleared or level-failed dialog appears', () => {
     for (let i = 0; i < 200 && game.state.phase === 'playing'; i++) {
       tapMove();
       if (game.state.phase !== 'playing') break;
@@ -115,7 +114,7 @@ describe('sound effects and mute (AC-14)', () => {
     expect(log.starts).toBeGreaterThan(before);
   });
 
-  it('plays a sound when the game-over dialog appears (sound on)', () => {
+  it('plays a sound when the level-failed dialog appears (sound on)', () => {
     let before = -1;
     for (let level = 0; level < 30 && before < 0; level++) {
       for (let i = 0; i < 200 && game.state.phase === 'playing'; i++) {
@@ -123,7 +122,7 @@ describe('sound effects and mute (AC-14)', () => {
         if (game.state.phase !== 'playing') break;
         settle();
       }
-      if (game.state.phase === 'gameOver') {
+      if (game.state.phase === 'levelFailed') {
         before = log.starts;
         expect(dialogButton()).toBeNull();
         settle();
@@ -134,7 +133,7 @@ describe('sound effects and mute (AC-14)', () => {
     }
     expect(before).toBeGreaterThanOrEqual(0);
     const dialog = root.querySelector('[role="dialog"][aria-modal="true"]')!;
-    expect(dialog.getAttribute('aria-label')).toBe('游戏结束');
+    expect(dialog.getAttribute('aria-label')).toBe('本关失败');
     expect(muteButton().getAttribute('aria-pressed')).toBe('false');
     expect(log.starts).toBeGreaterThan(before);
   });
@@ -166,7 +165,7 @@ describe('sound effects and mute (AC-14)', () => {
     expect(log.starts).toBeGreaterThan(starts);
   });
 
-  it('mute persists across next level and restart', () => {
+  it('mute persists across next level and retry', () => {
     pointer(document.body, 'pointerdown');
     muteButton().click();
     let sawRestart = false;
@@ -175,7 +174,7 @@ describe('sound effects and mute (AC-14)', () => {
         tapMove();
         settle();
       }
-      sawRestart = game.state.phase === 'gameOver';
+      sawRestart = game.state.phase === 'levelFailed';
       dialogButton()!.click();
       expect(muteButton().getAttribute('aria-pressed')).toBe('true');
     }

@@ -1,26 +1,29 @@
-import type { Board, MoveResult, Pos } from '../game/board';
-import { ROWS } from '../game/levels';
-import { animate } from './anim';
-import { APPEAR_MS, FALL_MS, MOVE_SETTLE_MS, REMOVE_MS, SHIFT_MS } from './timing';
+import type { Grid, Pos, Tile } from '../game/board';
+import { APPEAR_MS } from './timing';
 
-export const COLOR_NAMES = ['红', '黄', '绿', '蓝', '紫'] as const;
+export const COLOR_NAMES = ['红', '黄', '绿', '蓝', '紫', '橙'] as const;
 
-export function tileLabel(color: number, pos: Pos): string {
-  return `${COLOR_NAMES[color]}色方块，第${ROWS - pos.row}行第${pos.col + 1}列`;
+/** Accessible tile name; rows and columns count from 1 at the top-left (design §接口契约). */
+export function tileLabel(tile: Pick<Tile, 'kind' | 'color'>, pos: Pos): string {
+  const where = `第${pos.row + 1}行第${pos.col + 1}列`;
+  if (tile.kind === 'rainbow') return `彩色消除方块，${where}`;
+  const color = COLOR_NAMES[tile.color ?? 0];
+  if (tile.kind === 'row') return `${color}色横向消除方块，${where}`;
+  if (tile.kind === 'col') return `${color}色纵向消除方块，${where}`;
+  return `${color}色方块，${where}`;
 }
 
 export type Schedule = (ms: number, fn: () => void) => void;
 
 /**
  * Renders tiles as absolutely positioned buttons keyed by tile id (TD-002).
- * Accessible names and hit-testing always reflect the final board; the visual
- * position (CSS vars --c/--r) is staged through remove → fall → shift (TD-007).
+ * Accessible names, data attributes and hit-testing always reflect the grid
+ * passed to the last `sync`.
  */
 export class BoardView {
   readonly element: HTMLElement;
   private tiles = new Map<number, HTMLButtonElement>();
   private positions = new Map<HTMLElement, Pos>();
-  private lit: HTMLElement[] = [];
 
   constructor(
     private readonly doc: Document,
@@ -43,78 +46,49 @@ export class BoardView {
     return tile ? (this.positions.get(tile as HTMLElement) ?? null) : null;
   }
 
-  /** Marks exactly the given tiles as highlighted (AC-11); an empty list clears. */
-  highlight(ids: number[]): void {
-    for (const el of this.lit) el.removeAttribute('data-state');
-    this.lit = ids.flatMap((id) => this.tiles.get(id) ?? []);
-    for (const el of this.lit) el.dataset.state = 'highlighted';
+  /** Marks the tile with the given id as selected (A-11); null clears. */
+  select(id: number | null): void {
+    for (const [tid, el] of this.tiles) el.setAttribute('aria-pressed', String(tid === id));
   }
 
-  /**
-   * Makes the DOM match the board. Without `move` it jumps straight to the result
-   * (new boards get an appear animation); with `move` removed tiles fade out and
-   * moved tiles stay at `from`, then go to `afterFall` and `to` on the schedule.
-   */
-  sync(board: Board, move?: MoveResult): void {
-    this.highlight([]);
+  /** Makes the DOM match the grid; new tiles get an appear animation. */
+  sync(grid: Grid): void {
     const alive = new Set<number>();
-    const staged = new Map((move?.moved ?? []).map((m) => [m.id, m]));
-    board.forEach((col, c) =>
-      col.forEach((tile, r) => {
+    grid.forEach((row, r) =>
+      row.forEach((tile, c) => {
         alive.add(tile.id);
         let el = this.tiles.get(tile.id);
         if (!el) {
           el = this.doc.createElement('button');
           el.type = 'button';
-          el.className = `tile color-${tile.color} appear`;
-          el.dataset.color = String(tile.color);
+          el.className = 'tile appear';
+          el.setAttribute('aria-pressed', 'false');
           this.tiles.set(tile.id, el);
           this.element.append(el);
           const created = el;
           this.schedule(APPEAR_MS, () => created.classList.remove('appear'));
         }
-        const pos = { col: c, row: r };
+        el.classList.remove(...COLOR_NAMES.map((_, k) => `color-${k}`));
+        if (tile.color !== null) el.classList.add(`color-${tile.color}`);
+        el.dataset.kind = tile.kind;
+        if (tile.color === null) delete el.dataset.color;
+        else el.dataset.color = String(tile.color);
+        const pos = { row: r, col: c };
         this.positions.set(el, pos);
-        if (!staged.has(tile.id)) place(el, pos);
-        el.setAttribute('aria-label', tileLabel(tile.color, pos));
+        place(el, pos);
+        el.setAttribute('aria-label', tileLabel(tile, pos));
       }),
     );
     for (const [id, el] of this.tiles) {
       if (alive.has(id)) continue;
       this.tiles.delete(id);
       this.positions.delete(el);
-      if (move) this.vanish(el);
-      else el.remove();
+      el.remove();
     }
-    if (!move || staged.size === 0) return;
-    const els = [...staged.values()].flatMap((m) => {
-      const el = this.tiles.get(m.id);
-      return el ? [{ el, m }] : [];
-    });
-    this.schedule(REMOVE_MS, () => {
-      this.element.style.setProperty('--move-ms', `${FALL_MS}ms`);
-      for (const { el, m } of els) place(el, m.afterFall);
-    });
-    this.schedule(REMOVE_MS + FALL_MS, () => {
-      this.element.style.setProperty('--move-ms', `${SHIFT_MS}ms`);
-      for (const { el, m } of els) place(el, m.to);
-    });
-    this.schedule(MOVE_SETTLE_MS, () => this.element.style.removeProperty('--move-ms'));
-  }
-
-  /** Scale + fade out, then drop from the DOM; hidden from AT and hit-testing meanwhile. */
-  private vanish(el: HTMLElement): void {
-    el.classList.remove('tile', 'appear');
-    el.classList.add('tile-ghost');
-    el.removeAttribute('data-state');
-    el.setAttribute('aria-hidden', 'true');
-    el.tabIndex = -1;
-    animate(el, [{ scale: '1', opacity: 1 }, { scale: '0.2', opacity: 0 }], REMOVE_MS);
-    this.schedule(REMOVE_MS, () => el.remove());
   }
 }
 
 function place(el: HTMLElement, pos: Pos): void {
   el.style.setProperty('--c', String(pos.col));
-  el.style.setProperty('--r', String(ROWS - 1 - pos.row));
+  el.style.setProperty('--r', String(pos.row));
 }

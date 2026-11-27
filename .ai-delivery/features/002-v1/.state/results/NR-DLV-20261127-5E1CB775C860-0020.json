@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S38",
+  "result": "done",
+  "summary": "第 2 批已实现：交换输入（拖动、滑动、点选，按 TD-011 判定阈值）、逐轮动画流水线（按 TD-012 的交换、弹回、消除、下落、洗牌时长，每轮显示“+N”浮字，分数滚动）、信息栏五项、过关与失败提示层接线，以及 5 秒无操作提示；play 与 effects 两个端到端文件已按新玩法重写，不再依赖 legacyHelpers（mute 与 layout 属于第 3 批，仍引用它）。动画时长常量与提示的无障碍描述写法为自定的技术细节。实际运行的测试：typecheck 与 build 通过；全量单元测试 79 项通过（约 1 秒），其中新增 2 个 TS-23 用例写完即通过，因为对应规则在第 1 批已实现，无法演示“实现前失败”；全量集成测试 23 项通过（约 2 秒），其中新写的 swap.test.ts 共 8 项，实现前运行确认失败；新写或改动的端到端用例共 6 个（e2e/play.spec.ts 4 个、e2e/effects.spec.ts 2 个），desktop 6 个通过（约 34 秒），mobile 6 个通过（约 31 秒）。mobile 那轮因上一轮残留的 Vite 预览僵尸进程占用锁，改为手动启动预览服务（--bypass-lock），再用 E2E_BASE_URL 指向它运行。既有端到端用例（highscore、mute、layout 等）没有运行，交给平台和 G3 的独立测试。",
+  "asks": [],
+  "outputs": [
+    "src/ui/input.ts",
+    "src/ui/controller.ts",
+    "src/ui/boardView.ts",
+    "src/ui/timing.ts",
+    "src/styles/main.css",
+    "tests/unit/game.test.ts",
+    "tests/integration/helpers.ts",
+    "tests/integration/swap.test.ts",
+    "e2e/helpers.ts",
+    "e2e/play.spec.ts",
+    "e2e/effects.spec.ts",
+    ".ai-delivery/features/002-v1/.state/results/NR-DLV-20261127-5E1CB775C860-0020.json"
+  ]
+}

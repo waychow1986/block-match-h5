@@ -13,6 +13,8 @@ export function tileLabel(tile: Pick<Tile, 'kind' | 'color'>, pos: Pos): string 
   return `${color}色方块，${where}`;
 }
 
+let hintTextCount = 0;
+
 export type Schedule = (ms: number, fn: () => void) => void;
 
 /**
@@ -24,6 +26,7 @@ export class BoardView {
   readonly element: HTMLElement;
   private tiles = new Map<number, HTMLButtonElement>();
   private positions = new Map<HTMLElement, Pos>();
+  private readonly hintText: HTMLElement;
 
   constructor(
     private readonly doc: Document,
@@ -34,6 +37,11 @@ export class BoardView {
     this.element.setAttribute('role', 'group');
     this.element.setAttribute('aria-label', '棋盘');
     this.element.setAttribute('aria-busy', 'false');
+    this.hintText = doc.createElement('span');
+    this.hintText.id = `hint-text-${++hintTextCount}`;
+    this.hintText.className = 'visually-hidden';
+    this.hintText.textContent = '可交换提示';
+    this.element.append(this.hintText);
   }
 
   setBusy(busy: boolean): void {
@@ -51,8 +59,46 @@ export class BoardView {
     for (const [tid, el] of this.tiles) el.setAttribute('aria-pressed', String(tid === id));
   }
 
-  /** Makes the DOM match the grid; new tiles get an appear animation. */
-  sync(grid: Grid): void {
+  /** Transition time of tile position changes made from now on (TD-012). */
+  setMoveMs(ms: number): void {
+    this.element.style.setProperty('--move-ms', `${ms}ms`);
+  }
+
+  /** Visually moves the tile with the given id (swap / bounce); names and hit-testing are unchanged. */
+  moveTo(id: number, pos: Pos): void {
+    const el = this.tiles.get(id);
+    if (el) place(el, pos);
+  }
+
+  /** Starts the remove animation (fade and shrink) of the given tiles. */
+  markRemoving(ids: number[]): void {
+    for (const id of ids) this.tiles.get(id)?.classList.add('removing');
+  }
+
+  /**
+   * Hint marks (TD-016): `data-state="hint"` and the accessible description
+   * "可交换提示" on the given tiles; an empty list clears.
+   */
+  showHint(ids: number[]): void {
+    for (const el of this.tiles.values())
+      if (el.dataset.state === 'hint') {
+        delete el.dataset.state;
+        el.removeAttribute('aria-describedby');
+      }
+    for (const id of ids) {
+      const el = this.tiles.get(id);
+      if (!el) continue;
+      el.dataset.state = 'hint';
+      el.setAttribute('aria-describedby', this.hintText.id);
+    }
+  }
+
+  /**
+   * Makes the DOM match the grid. New tiles listed in `starts` are first placed
+   * there (e.g. above the board) and then moved, so they slide in; other new
+   * tiles get an appear animation.
+   */
+  sync(grid: Grid, starts?: ReadonlyMap<number, Pos>): void {
     const alive = new Set<number>();
     grid.forEach((row, r) =>
       row.forEach((tile, c) => {
@@ -65,8 +111,16 @@ export class BoardView {
           el.setAttribute('aria-pressed', 'false');
           this.tiles.set(tile.id, el);
           this.element.append(el);
-          const created = el;
-          this.schedule(APPEAR_MS, () => created.classList.remove('appear'));
+          const start = starts?.get(tile.id);
+          if (start) {
+            el.className = 'tile';
+            place(el, start);
+            // Flush styles so the move to the final cell below is transitioned.
+            void el.offsetWidth;
+          } else {
+            const created = el;
+            this.schedule(APPEAR_MS, () => created.classList.remove('appear'));
+          }
         }
         el.classList.remove(...COLOR_NAMES.map((_, k) => `color-${k}`));
         if (tile.color !== null) el.classList.add(`color-${tile.color}`);

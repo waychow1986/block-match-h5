@@ -1,6 +1,6 @@
 import { findMoves, type Grid, type Pos } from '../../src/game/board';
 import { MAX_ROUNDS } from '../../src/game/cascade';
-import { LEVEL_END_PAUSE_MS, MOVE_SETTLE_MS } from '../../src/ui/timing';
+import { LEVEL_END_PAUSE_MS, MOVE_SETTLE_MS, SHUFFLE_MS, SWAP_MS } from '../../src/ui/timing';
 
 /** Tile button whose accessible name ends with "第{row+1}行第{col+1}列". */
 export function tileIn(root: HTMLElement, p: Pos): HTMLButtonElement {
@@ -26,6 +26,18 @@ export function tapEl(el: Element, init: PointerEventInit = {}): void {
   doc.elementFromPoint = orig;
 }
 
+/**
+ * Drags from a tile by (dx, dy) pixels and releases (TD-011). happy-dom has no
+ * layout, so tiles measure 0 px and the 8 px minimum threshold applies.
+ */
+export function drag(root: HTMLElement, from: Pos, dx: number, dy: number, end: 'pointerup' | 'pointercancel' = 'pointerup'): void {
+  const el = tileIn(root, from);
+  pointer(el, 'pointerdown', { clientX: 100, clientY: 100 });
+  pointer(el, 'pointermove', { clientX: 100 + dx / 2, clientY: 100 + dy / 2 });
+  pointer(el, 'pointermove', { clientX: 100 + dx, clientY: 100 + dy });
+  pointer(el, end, { clientX: 100 + dx, clientY: 100 + dy });
+}
+
 /** Swaps two tiles by tapping one and then the other (A-11). */
 export function tapSwap(root: HTMLElement, a: Pos, b: Pos): void {
   tapEl(tileIn(root, a));
@@ -49,4 +61,4 @@ export function invalidSwap(grid: Grid): [Pos, Pos] | null {
 }
 
 /** Enough fake time for any cascade sequence plus the level-end pause. */
-export const SETTLE_ALL_MS = MAX_ROUNDS * MOVE_SETTLE_MS + LEVEL_END_PAUSE_MS + 10;
+export const SETTLE_ALL_MS = SWAP_MS + MAX_ROUNDS * MOVE_SETTLE_MS + SHUFFLE_MS + LEVEL_END_PAUSE_MS + 10;

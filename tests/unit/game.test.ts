@@ -117,6 +117,38 @@ describe('level outcome (AC-11, TD-009)', () => {
     expect(out.kind === 'valid' && out.state.movesLeft).toBe(0);
   });
 
+  it('TS-23: on the last move, exactly reaching the target clears; one point short fails', () => {
+    const dry = swapTiles({ ...base, movesLeft: 1, score: 0 }, p(7, 2), p(7, 3), mulberry32(2));
+    if (dry.kind !== 'valid') throw new Error('expected a valid swap');
+    const gain = dry.resolution.gained;
+    const exact = swapTiles({ ...base, movesLeft: 1, score: base.target - gain }, p(7, 2), p(7, 3), mulberry32(2));
+    expect(exact.kind === 'valid' && [exact.state.score, exact.state.movesLeft, exact.state.phase]).toEqual([
+      base.target,
+      0,
+      'levelCleared',
+    ]);
+    const short = swapTiles({ ...base, movesLeft: 1, score: base.target - gain - 1 }, p(7, 2), p(7, 3), mulberry32(2));
+    expect(short.kind === 'valid' && [short.state.score, short.state.phase]).toEqual([base.target - 1, 'levelFailed']);
+  });
+
+  it('TS-23: a cascade after the last move that crosses the target clears the level', () => {
+    // Bottom-left: swapping (7,2)<->(7,3) removes three 0s; the falling column forms 1-1-1 in round 2.
+    const chain = withGrid(
+      createGame(mulberry32(1)),
+      parseGrid(['12341234', '23412341', '34123412', '41234123', '34231234', '42342341', '21153412', '00104123']),
+    );
+    expect(findLines(chain.grid)).toHaveLength(0);
+    const dry = swapTiles({ ...chain, movesLeft: 1, score: 0 }, p(7, 2), p(7, 3), mulberry32(2));
+    if (dry.kind !== 'valid') throw new Error('expected a valid swap');
+    expect(dry.resolution.steps.length).toBeGreaterThanOrEqual(2);
+    const first = dry.resolution.steps[0]!.gained;
+    const s = { ...chain, movesLeft: 1, score: chain.target - first - 1 };
+    const out = swapTiles(s, p(7, 2), p(7, 3), mulberry32(2));
+    expect(out.kind === 'valid' && out.state.movesLeft).toBe(0);
+    expect(out.kind === 'valid' && out.state.score).toBeGreaterThan(chain.target);
+    expect(out.kind === 'valid' && out.state.phase).toBe('levelCleared');
+  });
+
   it('running out of moves below the target fails the level', () => {
     const s = { ...base, movesLeft: 1, score: 0 };
     const out = swapTiles(s, p(7, 2), p(7, 3), mulberry32(2));

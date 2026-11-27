@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { findLines, gridText, parseGrid, tileAt, type Pos } from '../../src/game/board';
+import { findLines, findMoves, gridText, isPlayable, parseGrid, tileAt, type Pos } from '../../src/game/board';
 import { MAX_ROUNDS, resolveSwap } from '../../src/game/cascade';
 import { pointsFor } from '../../src/game/scoring';
-import type { Rng } from '../../src/game/rng';
+import { mulberry32, type Rng } from '../../src/game/rng';
 
 const p = (row: number, col: number): Pos => ({ row, col });
 
@@ -148,6 +148,96 @@ describe('special tiles fire (AC-8, AC-9, A-8, A-9)', () => {
     const second = resolution.steps[1]!;
     expect(second.removed.length).toBeGreaterThanOrEqual(4);
     expect(second.spawned[0]).toMatchObject({ tile: { kind: 'row', color: 1 }, pos: p(3, 2) });
+  });
+});
+
+/** Refill colours: `first` in order, then `rest` (default: cycling through 0..colors-1). */
+function seq(first: number[], colors: number, rest: Rng = cycle(colors)): Rng {
+  let i = 0;
+  return () => (i < first.length ? (first[i++]! + 0.5) / colors : rest());
+}
+
+describe('crossing lines are judged per straight line (AC-8, A-6)', () => {
+  it('an L of 3 + 3 removes both lines and creates no special tile', () => {
+    const rows = ['12034', '23041', '00512', '34023', '41231'];
+    const { resolution } = run(rows, p(2, 2), p(3, 2));
+    const step = resolution.steps[0]!;
+    const cleared = step.removed.map((r) => r.pos).sort((x, y) => x.row - y.row || x.col - y.col);
+    expect(cleared).toEqual([p(0, 2), p(1, 2), p(2, 0), p(2, 1), p(2, 2)]);
+    expect(step.spawned).toEqual([]);
+  });
+
+  it('a T of 4 across + 3 down creates exactly one row-clearing tile', () => {
+    const rows = ['12034', '23041', '00502', '34023', '41231'];
+    const { resolution } = run(rows, p(2, 2), p(3, 2));
+    const step = resolution.steps[0]!;
+    expect(step.removed).toHaveLength(6);
+    expect(step.spawned).toHaveLength(1);
+    expect(step.spawned[0]).toMatchObject({ tile: { kind: 'row', color: 0 }, pos: p(2, 2) });
+  });
+});
+
+describe('special tiles caught by another effect fire too (AC-8, FR-041)', () => {
+  it('a row clear that sweeps a column-clearing tile also clears that column', () => {
+    const { grid, resolution } = run(['12312', '23123', '31031', '0A12d'], p(2, 2), p(3, 2));
+    const step = resolution.steps[0]!;
+    const cleared = new Set(step.removed.map((r) => `${r.pos.row},${r.pos.col}`));
+    for (let c = 0; c < 5; c++) expect(cleared.has(`3,${c}`)).toBe(true);
+    for (let r = 0; r < 4; r++) expect(cleared.has(`${r},4`)).toBe(true);
+    expect(step.removed).toHaveLength(8);
+    expect(step.triggered).toEqual([
+      { id: tileAt(grid, p(3, 1))!.id, kind: 'row', pos: p(3, 1) },
+      { id: tileAt(grid, p(3, 4))!.id, kind: 'col', pos: p(3, 4) },
+    ]);
+    expect(step.gained).toBe(pointsFor(8, 1));
+  });
+});
+
+describe('lines of 5 or more in cascades and longer lines (AC-9, A-5, FR-044)', () => {
+  it('a line of 6 leaves a rainbow tile, not a row tile', () => {
+    // Round 1 clears row 0 cols 2..4; three 0 refills make row 0 a line of six.
+    const rows = ['001120', '234513', '345234', '452345'];
+    const { resolution } = run(rows, p(0, 4), p(1, 4), 6, seq([0, 0, 0], 6));
+    const second = resolution.steps[1]!;
+    expect(second.round).toBe(2);
+    expect(second.removed).toHaveLength(6);
+    expect(second.spawned).toHaveLength(1);
+    expect(second.spawned[0]).toMatchObject({ tile: { kind: 'rainbow', color: null }, pos: p(0, 2) });
+  });
+
+  it('a line of 5 formed in a cascade round leaves a rainbow tile', () => {
+    const rows = ['01120', '23413', '34523', '45234'];
+    const { resolution } = run(rows, p(0, 3), p(1, 3), 6, seq([0, 0, 0], 6));
+    const second = resolution.steps[1]!;
+    expect(second.round).toBe(2);
+    expect(second.removed).toHaveLength(5);
+    expect(second.spawned).toEqual([expect.objectContaining({ tile: expect.objectContaining({ kind: 'rainbow' }), pos: p(0, 2) })]);
+  });
+});
+
+describe('a dead board after resolving is shuffled (AC-14, TD-008)', () => {
+  // Round 1 clears column 1; refills 0,1,2 (bottom up) leave a board with no valid swap.
+  const { resolution } = run(['023', '302', '120'], p(1, 1), p(1, 2), 4, seq([0, 1, 2], 4, mulberry32(5)));
+
+  it('the settled board had no valid swap, so a shuffle is reported', () => {
+    expect(resolution.steps).toHaveLength(1);
+    expect(isPlayable(resolution.steps[0]!.grid)).toBe(false);
+    expect(resolution.shuffle).not.toBeNull();
+  });
+
+  it('the shuffled board keeps the same tiles, has no line and has a valid swap', () => {
+    const settled = resolution.steps[0]!.grid;
+    const shuffled = resolution.shuffle!.grid;
+    const ids = (g: typeof settled) => g.flat().map((t) => t.id).sort((x, y) => x - y);
+    expect(ids(shuffled)).toEqual(ids(settled));
+    expect(findLines(shuffled)).toHaveLength(0);
+    expect(findMoves(shuffled).length).toBeGreaterThan(0);
+    expect(resolution.shuffle!.moves).toHaveLength(9);
+  });
+
+  it('shuffling adds no points', () => {
+    expect(resolution.gained).toBe(resolution.steps[0]!.gained);
+    expect(resolution.gained).toBe(pointsFor(3, 1));
   });
 });
 

@@ -67,6 +67,46 @@ describe('swapping (AC-4, AC-7)', () => {
   });
 });
 
+describe('swapping a rainbow tile through swapTiles (AC-9, FR-043)', () => {
+  it('a swap with a neighbour that forms no line is valid, costs one move and clears that colour', () => {
+    const grid = parseGrid(['1231', '2*12', '3123', '4521']);
+    expect(findLines(parseGrid(['1231', '21*2', '3123', '4521']))).toHaveLength(0);
+    const base = withGrid(createGame(mulberry32(1)), grid, { target: Number.MAX_SAFE_INTEGER });
+    const out = swapTiles(base, p(1, 1), p(1, 2), mulberry32(2));
+    expect(out.kind).toBe('valid');
+    if (out.kind !== 'valid') return;
+    expect(out.state.movesLeft).toBe(base.movesLeft - 1);
+    const removed = new Set(out.resolution.steps[0]!.removed.map((r) => r.id));
+    for (const t of grid.flat()) if (t.color === 1 || t.kind === 'rainbow') expect(removed.has(t.id)).toBe(true);
+    expect(out.state.score).toBe(base.score + out.resolution.gained);
+  });
+});
+
+describe('a dead board after a swap (AC-14)', () => {
+  // Refill colours 0,1,2 (bottom up) leave this 3 x 3 board without a valid swap.
+  const shuffleRng = mulberry32(5);
+  let i = 0;
+  const refillThenRandom = () => (i < 3 ? (i++ + 0.5) / 4 : shuffleRng());
+
+  it('is shuffled within the same move: one move spent, score up by the rounds only', () => {
+    const base = withGrid(createGame(mulberry32(1)), parseGrid(['023', '302', '120']), {
+      colors: 4,
+      score: 70,
+      target: Number.MAX_SAFE_INTEGER,
+    });
+    const out = swapTiles(base, p(1, 1), p(1, 2), refillThenRandom);
+    expect(out.kind).toBe('valid');
+    if (out.kind !== 'valid') return;
+    expect(out.resolution.shuffle).not.toBeNull();
+    expect(out.state.grid).toBe(out.resolution.shuffle!.grid);
+    expect(isPlayable(out.state.grid)).toBe(true);
+    expect(out.state.movesLeft).toBe(base.movesLeft - 1);
+    const rounds = out.resolution.steps.reduce((sum, s) => sum + s.gained, 0);
+    expect(out.state.score).toBe(70 + rounds);
+    expect(out.state.phase).toBe('playing');
+  });
+});
+
 describe('level outcome (AC-11, TD-009)', () => {
   const base = withGrid(createGame(mulberry32(1)), FIXED);
 

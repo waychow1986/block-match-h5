@@ -51,7 +51,8 @@ async function audibleStartsDuring(page, n, how) {
   const a0 = await L.audio(page);
   let done = 0;
   for (let i = 0; i < n * 3 && done < n; i++) {
-    const s = await L.play(page, { how });
+    // weak picker keeps level 1 from ending before the planned swaps are done
+    const s = await L.play(page, { pick: L.weak, how });
     if (s.none || s.dlg) break;
     if (s.floats.length) done++;
   }
@@ -68,17 +69,23 @@ const T36 = async (rec) => {
       if ((await L.muteBtn(page).getAttribute('aria-pressed')) !== 'false') skip('静音按钮初始不是未静音');
       const B = await L.readBoard(page);
       const m = L.strong(L.allMoves(B.g));
-      const f0 = await L.floatsCount(page);
+      // Reference point: the swap operation itself. The game swaps while the drag is still in progress and the removal
+      // sound starts right then (before the gesture call returns and well before the score float), so every source
+      // started from the beginning of this swap gesture is a sound of this removal.
+      const t0 = await page.evaluate(() => performance.now());
       await L.gesture(page, B, m.a, m.b);
-      let a1, ft = null;
-      for (let i = 0; i < 80; i++) {
-        await L.sleep(20);
-        if (ft === null) { const fs = await L.floatsSince(page, f0); if (fs.length) ft = fs[0].t - 50; else continue; }
+      const playing = (a) => a.starts.some((x) => x.t >= t0 && x.state === 'running' && x.audible);
+      let a1;
+      for (let i = 0; i < 100; i++) {
         a1 = await L.audio(page);
-        if (a1.starts.some((x) => x.t >= ft)) break;
+        if (playing(a1)) break;
+        await L.sleep(10);
       }
-      if (!a1 || !a1.starts.some((x) => x.t >= ft)) skip('消除后没有音效开始，无法在播放中点静音');
-      await L.sleep(30);
+      if (!a1 || !playing(a1)) skip('交换完成后 1 秒内没有音效开始，无法在播放中点静音');
+      // An emulated tap issued within a few ms of the swipe's touchEnd is swallowed by the browser's gesture detection;
+      // leave a short, human-like gap (the removal sound is still playing then).
+      if (mobile) await L.sleep(120);
+      a1 = await L.audio(page);
       await clickMute(page);
       const a2 = await L.audio(page);
       const pressed = await L.muteBtn(page).getAttribute('aria-pressed');

@@ -1,5 +1,5 @@
 import { isAdjacent, samePos, tileAt, type Pos } from '../game/board';
-import type { RoundStep } from '../game/cascade';
+import { refillStart, type RoundStep } from '../game/cascade';
 import { COLS, ROWS } from '../game/levels';
 import { createGame, hintMove, nextLevel, retryLevel, swapTiles, type GameState } from '../game/game';
 import type { Rng } from '../game/rng';
@@ -237,7 +237,7 @@ export class GameController {
     this.later(REMOVE_MS, () => {
       const starts = new Map<number, Pos>();
       for (const s of step.spawned) starts.set(s.tile.id, s.pos);
-      for (const r of step.refills) starts.set(r.tile.id, { row: r.to.row - r.dropFrom, col: r.to.col });
+      for (const r of step.refills) starts.set(r.tile.id, refillStart(r));
       this.boardView.setMoveMs(FALL_MS);
       this.boardView.sync(step.grid, starts);
     });

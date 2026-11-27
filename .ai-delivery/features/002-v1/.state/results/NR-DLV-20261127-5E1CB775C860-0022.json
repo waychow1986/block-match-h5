@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S38",
+  "result": "done",
+  "summary": "修复 S39 指出的顶部补充方块起始位置错误（提取 refillStart 为可单独测试的函数，起始行改为负的下落格数，新方块从棋盘上方第 3、2、1 格落入）；复现测试修改前运行失败、修改后通过（各约 0.2 秒）；类型检查与构建通过，全量单元测试 80 项、全量集成测试 23 项全部通过（合计约 5 秒）；本批未新写或改动端到端用例，既有端到端用例未运行（交由 G3 独立测试验证）。",
+  "asks": [],
+  "outputs": [
+    "src/game/cascade.ts",
+    "src/ui/controller.ts",
+    "tests/unit/cascade.test.ts"
+  ]
+}

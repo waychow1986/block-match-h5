@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { findLines, findMoves, gridText, isPlayable, parseGrid, tileAt, type Pos } from '../../src/game/board';
-import { MAX_ROUNDS, resolveSwap } from '../../src/game/cascade';
+import { MAX_ROUNDS, refillStart, resolveSwap } from '../../src/game/cascade';
 import { pointsFor } from '../../src/game/scoring';
 import { mulberry32, type Rng } from '../../src/game/rng';
 
@@ -45,6 +45,23 @@ describe('a plain match (AC-4)', () => {
     ]);
     expect(step.refills.map((r) => r.tile.id)).toEqual([1000, 1001, 1002]);
     expect(step.grid.flat().every((t) => t != null)).toBe(true);
+  });
+});
+
+describe('refills drop in from above the board (AC-19)', () => {
+  it('three tiles cleared from one column start 3, 2 and 1 cells above the board', () => {
+    const { resolution } = run(transpose(['1231', '2312', '3123', '0010']), p(2, 3), p(3, 3));
+    const step = resolution.steps[0]!;
+    expect(step.removed.map((r) => r.pos)).toEqual([p(0, 3), p(1, 3), p(2, 3)]);
+    const starts = step.refills.map((r) => [r.to, refillStart(r)]);
+    expect(starts).toHaveLength(3);
+    expect(starts).toEqual(
+      expect.arrayContaining([
+        [p(0, 3), p(-3, 3)],
+        [p(1, 3), p(-2, 3)],
+        [p(2, 3), p(-1, 3)],
+      ]),
+    );
   });
 });
 

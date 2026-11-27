@@ -157,6 +157,11 @@ function planSpawns(lines: Line[], preferred: Pos[]): { kind: TileKind; color: T
   return out;
 }
 
+/** Where a refill tile starts its drop-in animation: `dropFrom` cells above the board. */
+export function refillStart(refill: RoundStep['refills'][number]): Pos {
+  return { row: -refill.dropFrom, col: refill.to.col };
+}
+
 /** Gravity then refill from the top with random colours (TD-004). */
 function collapse(
   holes: (Tile | null)[][],

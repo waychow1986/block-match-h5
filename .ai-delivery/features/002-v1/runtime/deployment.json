@@ -1,0 +1,19 @@
+{
+  "developerSetupCommands": [
+    "npm ci"
+  ],
+  "developerValidationCommands": {
+    "staticAnalysis": [
+      "npm run typecheck"
+    ],
+    "build": [
+      "npm run build"
+    ],
+    "developerTests": [
+      "npm run test:unit"
+    ],
+    "integrationTests": [
+      "npm run test:integration"
+    ]
+  }
+}

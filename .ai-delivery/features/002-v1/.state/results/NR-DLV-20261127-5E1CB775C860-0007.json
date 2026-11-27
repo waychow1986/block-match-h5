@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S10",
+  "result": "done",
+  "summary": "细化计划：完整档，编码按技术依赖分 3 批（规则层与本机记录 → 交换输入、动画与关卡流程 → 页面说明、音频修复、静音与自适应），每批之后有代码审查，各批预计 55～80 分钟，均不超过 90 分钟会话时限。",
+  "asks": [],
+  "outputs": [".ai-delivery/features/002-v1/.state/results/NR-DLV-20261127-5E1CB775C860-0007.json"],
+  "plan": {
+    "schemaVersion": 1,
+    "steps": [
+      {"id": "P1", "capability": "code", "zone": "build", "dependsOn": [], "batch": 1},
+      {"id": "P2", "capability": "review", "zone": "build", "dependsOn": ["P1"], "batch": 1},
+      {"id": "P3", "capability": "code", "zone": "build", "dependsOn": ["P2"], "batch": 2},
+      {"id": "P4", "capability": "review", "zone": "build", "dependsOn": ["P3"], "batch": 2},
+      {"id": "P5", "capability": "code", "zone": "build", "dependsOn": ["P4"], "batch": 3},
+      {"id": "P6", "capability": "review", "zone": "build", "dependsOn": ["P5"], "batch": 3}
+    ],
+    "omitted": [
+      {"capability": "spec", "reason": "规格已写成（spec.md），本次细化没有发现需要重写规格的设计变化。"},
+      {"capability": "solution", "reason": "技术方案已写成（design.md），列出了技术依赖与可测性约定，足以拆批，不需要重做。"},
+      {"capability": "plan", "reason": "本步骤就是技术方案之后的细化计划，之后没有新的技术方案，不需要再计划。"}
+    ],
+    "batches": [
+      {"n": 1, "criteria": ["AC-2", "AC-4", "AC-6", "AC-7", "AC-8", "AC-9", "AC-13", "AC-14", "AC-18"]},
+      {"n": 2, "criteria": ["AC-1", "AC-3", "AC-5", "AC-10", "AC-11", "AC-12", "AC-15", "AC-19"]},
+      {"n": 3, "criteria": ["AC-16", "AC-17", "AC-20", "AC-21", "AC-22"]}
+    ],
+    "factors": [
+      {"name": "change-size", "lean": "heavy", "basis": "整套玩法从点击消除替换为交换三消：规则层（新格子表示、逐轮结算、特殊方块、洗牌、关卡数值）、输入、动画流水线、控制器全部重写，旧玩法代码与测试删除，端到端用例按新玩法重写。"},
+      {"name": "modules", "lean": "heavy", "basis": "涉及 src/game、src/ui、src/audio、src/storage、src/styles、index.html、三层测试（unit/integration/e2e）与 README、docs/deployment.json。"},
+      {"name": "new-or-first", "lean": "light", "basis": "不是新项目，也不是接管后的首个交付：已有发布来源的系统现状与部署声明，技术栈与部署沿用。"},
+      {"name": "risk", "lean": "medium", "basis": "无数据迁移（新存储键，旧键保留不动）、无后端与凭据、无新增依赖；但手机音频解锁修复在 Pod 中无法复现，只能用严格策略替身回归并留待实机验收（H-1），且关卡数值影响可玩性。"}
+    ],
+    "tier": "full",
+    "budget": {"revisions": 4, "sessions": 18, "hours": 14.0},
+    "items": [],
+    "reason": "档位：四项依据中改动规模与模块数偏重、风险中等、新项目/首个交付偏轻，依据本身支持标准档到完整档；tierFloor 为 full，给完整档，每批编码之后安排该批的代码审查。\n\n批数：意图与技术方案的全部工作约为规则层（含特殊方块、洗牌、关卡数值）约 40 分钟、交换输入与逐轮动画及关卡流程约 45 分钟、页面说明/音频修复/静音/自适应约 35 分钟，加上旧代码与测试的删除改写、单元与集成测试和本批新写端到端用例的单独运行，合计明显超过一次 90 分钟会话（含约 5～10 分钟写结果的余量），两批也放不下（第 1 批与第 2 批相加约 155 分钟，第 2 批与第 3 批相加约 135 分钟），因此按技术依赖拆为 3 批，相邻任意两批合并都会超时。\n\n排序依据（技术方案“技术先后依赖”）：新格子表示（TD-002）先于 cascade.ts/game.ts；cascade.ts 的逐轮步骤结构先于 boardView 的逐轮动画与控制器播放；swapTiles/findMoves/hintMove 先于 input.ts 与控制器接线；createMaxStore 与新键先于控制器启动时读取已到达的最高关卡；boardView 的方块可访问名称先于端到端与集成测试辅助函数改写；删除旧玩法代码必须与对应旧测试的删除/改写同批完成（typecheck 覆盖测试文件）。第 2 批与第 3 批之间没有列出的技术依赖，音频、说明、自适应排在最后是按业务先后（先能玩，再完善声音与页面）推断。\n\n第 1 批（规则层与本机记录，AC-2、AC-4、AC-6、AC-7、AC-8、AC-9、AC-13、AC-14、AC-18）：board.ts 新格子表示与开局生成/洗牌（TD-002、TD-008）、cascade.ts 逐轮结算与特殊方块生成/触发（TD-003～TD-005、TD-007）、game.ts 状态与 swapTiles/findMoves/hintMove/nextLevel/retryLevel、levels.ts 数值（TD-006）、storage 泛化为 createMaxStore 与两个新键并在 app.ts 读取开局关卡（TD-013、FR-082）；删除旧玩法规则与旧单元/集成测试（TD-017）；控制器、boardView 按新规则与新可访问名称改写到“先后点两个相邻方块即交换、静止时显示结算后的最终棋盘与分数”的程度，保证 typecheck 与集成测试通过（这是第 2 批动画与拖动的基础，不是临时代码）；改写 tests/integration/helpers.ts 与 e2e/helpers.ts 的读棋盘方式，重写 e2e/highscore.spec.ts（AC-18）。开发者检查：单元测试实现 TS-13（连锁计分）、TS-16（4 连特殊方块）、TS-19（彩色消除方块）、TS-26（第 1～200 关数值）、TS-28（洗牌）以及存储容错。预计用时约 75 分钟：编码约 65 分钟，全量单元测试约 10 秒、全量集成测试约 20 秒（可测性约定的估计）多次运行合计约 3 分钟，单独运行新写的最高分端到端用例 desktop/mobile 各 1 个约 3 分钟（含首次构建与预览启动约 30 秒），另留写结果余量。\n\n第 2 批（交换输入、动画与关卡流程，AC-1、AC-3、AC-5、AC-10、AC-11、AC-12、AC-15、AC-19）：input.ts 重写为 attachSwapInput（拖动/滑动超过 35% 即交换、点选、不相邻点选改选，TD-011）；timing.ts 与 boardView 的逐轮动画流水线（交换、弹回、消除、下落与顶部补充、洗牌、“+得分”浮字，TD-012）及 aria-busy；hud 五项信息栏；overlay 的“过关/本关失败”提示层与下一关/重玩本关；TD-009 的关卡结果判定接线；5 秒无操作提示（TD-016）。开发者检查：单元测试实现 TS-23（用掉最后一步后达标算过关，R1）；集成测试覆盖 AC-3、AC-10、AC-11、AC-12、AC-15（假定时器）。重写 e2e/play.spec.ts 与 e2e/effects.spec.ts。预计用时约 80 分钟：编码约 65 分钟，全量单元与集成测试多次运行合计约 3 分钟，单独运行本批新写的端到端用例约 8 分钟；其中玩到过关/失败的用例单个可达 3 分钟，编码会话只单独运行其中最小部分（每个项目各一个过关或失败场景、一个交换/弹回场景、一个提示场景），计入上述 8 分钟。\n\n第 3 批（页面说明、原创内容、音频修复、静音与自适应，AC-16、AC-17、AC-20、AC-21、AC-22）：index.html 标题与 intro.ts“怎么玩”说明（含静音模式提示，TD-015）；方块外观与原创配色、音效（TD-014）；sound.ts 与控制器的音频解锁修复（在 touchend/pointerup/click/keydown/mousedown 中同步解锁，TD-010）、每轮消除音与过关/失败音、静音按钮；main.css 棋盘随可视区域缩放、无横向滚动；README 与 docs/deployment.json 服务描述（TD-018）。开发者检查：集成测试实现 TS-40（音频只在用户激活事件中解锁、触摸 pointerdown 不解锁）并更新 audio/effects 集成测试；新增 e2e/audio-policy.ts 严格策略替身，重写 e2e/mute.spec.ts 与 e2e/layout.spec.ts，新增说明与手机音效用例。预计用时约 55 分钟：编码约 42 分钟，全量单元与集成测试约 3 分钟，单独运行本批新写的端到端用例约 6 分钟。\n\n既有端到端整套不在编码会话中运行、不计入任何一批用时；验收由 G3 的独立测试验证。实机音效（H-1，AC-21 在 iOS Safari 与 Android Chrome 上）按测试计划由业务负责人在验收时用实机确认，不另设批次。\n\n未发现需要人决定、会改变步骤/批次/档位/预算/范围的事项，items 为空；本交付不是缺陷修复类交付为主（手机无音效的修复是意图范围第 10 条与 AC-21 的一部分，随第 3 批完成）。预算：此前计划 16 个会话、12 小时，此次编码由 2 批增至 3 批，多出一组编码与代码审查，会话数调为 18、工时调为 14 小时，修订次数保持 4。"
+  }
+}

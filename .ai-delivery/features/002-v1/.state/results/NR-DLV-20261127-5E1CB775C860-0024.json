@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "stepId": "S40",
+  "result": "done",
+  "summary": "第 3 批（AC-8/AC-9 外观、AC-16、AC-17、AC-20、AC-21、AC-22）已实现：标题“方块换换”与棋盘下方的“怎么玩”说明，横纹、竖纹和带白色星形的彩色特殊方块外观，音频只在 touchend/pointerup/click/keydown/mousedown 中解锁并在切回页面时恢复，连锁每轮音高递增，首屏完整显示棋盘；类型检查与构建通过（项目没有单独的格式或静态检查命令），全量单元测试 80 项（约 1 秒）、全量集成测试 35 项（约 2 秒，其中新写的音频解锁与“怎么玩”集成测试 10 项实现前失败、实现后通过）全部通过，本批新写或改写的端到端用例 intro、layout、mute、mobile-audio 共 14 项在桌面和手机项目中通过（约 12 秒；4 项为另一项目专属而跳过；mute 与 mobile-audio 重复 8 次均通过，约 1 分钟），未改动的既有端到端用例（play、effects、highscore）未在会话中运行、交给 G3 独立测试，真机（iOS Safari、Android Chrome）上能否听到声音无法在本环境验证、需在测试环境用真机核对。",
+  "asks": [],
+  "outputs": [
+    "src/audio/sound.ts",
+    "src/ui/controller.ts",
+    "src/ui/intro.ts",
+    "src/styles/main.css",
+    "index.html",
+    "README.md",
+    "tests/integration/audio.test.ts",
+    "tests/integration/intro.test.ts",
+    "e2e/audio-policy.ts",
+    "e2e/helpers.ts",
+    "e2e/intro.spec.ts",
+    "e2e/layout.spec.ts",
+    "e2e/mobile-audio.spec.ts",
+    "e2e/mute.spec.ts",
+    "e2e/legacyHelpers.ts",
+    ".ai-delivery/features/002-v1/.state/results/NR-DLV-20261127-5E1CB775C860-0024.json"
+  ]
+}

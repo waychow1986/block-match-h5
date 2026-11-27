@@ -2,13 +2,15 @@ export interface HudValues {
   score: number;
   target: number;
   level: number;
+  movesLeft: number;
   highScore: number;
 }
 
 const FIELDS: { key: keyof HudValues; label: string }[] = [
   { key: 'level', label: '当前关卡' },
-  { key: 'score', label: '当前分数' },
+  { key: 'score', label: '本关得分' },
   { key: 'target', label: '本关目标分数' },
+  { key: 'movesLeft', label: '剩余步数' },
   { key: 'highScore', label: '历史最高分' },
 ];
 
@@ -49,7 +51,7 @@ export class Hud {
   }
 
   /**
-   * Counts the "当前分数" status text from `from` up to `to` over `ms` using
+   * Counts the "本关得分" status text from `from` up to `to` over `ms` using
    * animation frames, passing through intermediate values (TD-007).
    */
   countScore(from: number, to: number, ms: number): void {

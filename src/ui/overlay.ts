@@ -1,11 +1,11 @@
-export type OverlayKind = 'levelCleared' | 'gameOver';
+export type OverlayKind = 'levelCleared' | 'levelFailed';
 
 const TEXT: Record<OverlayKind, { title: string; action: string }> = {
   levelCleared: { title: '过关', action: '下一关' },
-  gameOver: { title: '游戏结束', action: '重新开始' },
+  levelFailed: { title: '本关失败', action: '重玩本关' },
 };
 
-/** Modal prompt shown above the board when a level ends (FR-034, FR-035). */
+/** Modal prompt shown above the board when a level ends (FR-061, FR-062, A-17). */
 export class Overlay {
   private current: HTMLElement | null = null;
 
@@ -18,7 +18,7 @@ export class Overlay {
     return (this.current?.dataset.kind as OverlayKind | undefined) ?? null;
   }
 
-  show(kind: OverlayKind, score: number, onAction: () => void): void {
+  show(kind: OverlayKind, level: number, score: number, onAction: () => void): void {
     this.hide();
     const { title, action } = TEXT[kind];
     const dialog = this.doc.createElement('div');
@@ -32,9 +32,12 @@ export class Overlay {
     const h = this.doc.createElement('h2');
     h.className = 'overlay-title';
     h.textContent = title;
+    const lv = this.doc.createElement('p');
+    lv.className = 'overlay-level';
+    lv.textContent = `第 ${level} 关`;
     const p = this.doc.createElement('p');
     p.className = 'overlay-score';
-    p.textContent = `得分 ${score}`;
+    p.textContent = `本关得分 ${score}`;
     const btn = this.doc.createElement('button');
     btn.type = 'button';
     btn.className = 'overlay-action';
@@ -43,7 +46,7 @@ export class Overlay {
       this.hide();
       onAction();
     });
-    card.append(h, p, btn);
+    card.append(h, lv, p, btn);
     dialog.append(card);
     this.host.append(dialog);
     this.current = dialog;

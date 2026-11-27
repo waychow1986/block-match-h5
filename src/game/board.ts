@@ -1,132 +1,202 @@
 import type { Rng } from './rng';
-import { scoreFor } from './scoring';
 
-export type ColorId = 0 | 1 | 2 | 3 | 4;
+export type ColorId = 0 | 1 | 2 | 3 | 4 | 5; // 红 黄 绿 蓝 紫 橙
+export type TileKind = 'normal' | 'row' | 'col' | 'rainbow';
+/** `row` clears its whole row, `col` its whole column; `rainbow` has no colour (TD-002). */
 export interface Tile {
   id: number;
-  color: ColorId;
+  kind: TileKind;
+  color: ColorId | null;
 }
-/** Column-major: board[col][rowFromBottom]; only non-empty columns, each packed from the bottom. */
-export type Board = Tile[][];
+/** Row-major: grid[row][col], row 0 is the top row; always full (TD-002). */
+export type Grid = Tile[][];
 export interface Pos {
-  col: number;
   row: number;
+  col: number;
 }
-export interface MovedTile {
-  id: number;
-  from: Pos;
-  afterFall: Pos;
-  to: Pos;
+export interface Line {
+  dir: 'h' | 'v';
+  color: ColorId;
+  cells: Pos[];
 }
-export interface MoveResult {
-  removed: { id: number; pos: Pos }[];
-  /** Tiles whose position changed (falling and/or column shift). */
-  moved: MovedTile[];
-  gained: number;
-  board: Board;
-  levelEnded: boolean;
+export type Move = [Pos, Pos];
+
+const MAX_GENERATE = 100;
+const MAX_SHUFFLE = 500;
+
+export function tileAt(grid: Grid, p: Pos): Tile | undefined {
+  return grid[p.row]?.[p.col];
 }
 
-export function tileAt(board: Board, pos: Pos): Tile | undefined {
-  return board[pos.col]?.[pos.row];
+export function cloneGrid(grid: Grid): Grid {
+  return grid.map((row) => row.slice());
 }
 
-/** Builds a board from colour ids (columns left-to-right, each bottom-to-top). */
-export function makeBoard(columns: number[][], firstId = 0): Board {
+export function samePos(a: Pos, b: Pos): boolean {
+  return a.row === b.row && a.col === b.col;
+}
+
+export function isAdjacent(a: Pos, b: Pos): boolean {
+  return Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+}
+
+function inside(grid: Grid, p: Pos): boolean {
+  return p.row >= 0 && p.row < grid.length && p.col >= 0 && p.col < (grid[0]?.length ?? 0);
+}
+
+/**
+ * Builds a grid from text rows (tests and fixtures): `0`–`5` normal tiles,
+ * `A`–`F` row-clearing tiles of colour 0–5, `a`–`f` column-clearing tiles,
+ * `*` rainbow tiles. Ids are assigned row by row from `firstId`.
+ */
+export function parseGrid(rows: string[], firstId = 0): Grid {
   let id = firstId;
-  return columns.map((col) => col.map((c) => ({ id: id++, color: c as ColorId })));
+  return rows.map((line) =>
+    [...line].map((ch): Tile => {
+      if (ch === '*') return { id: id++, kind: 'rainbow', color: null };
+      if (/[0-5]/.test(ch)) return { id: id++, kind: 'normal', color: Number(ch) as ColorId };
+      if (/[A-F]/.test(ch)) return { id: id++, kind: 'row', color: (ch.charCodeAt(0) - 65) as ColorId };
+      if (/[a-f]/.test(ch)) return { id: id++, kind: 'col', color: (ch.charCodeAt(0) - 97) as ColorId };
+      throw new Error(`bad tile ${ch}`);
+    }),
+  );
 }
 
-export function findGroup(board: Board, pos: Pos): Pos[] {
-  const start = tileAt(board, pos);
-  if (!start) return [];
-  const seen = new Set<string>([`${pos.col},${pos.row}`]);
-  const stack: Pos[] = [pos];
-  const group: Pos[] = [];
-  while (stack.length) {
-    const p = stack.pop()!;
-    group.push(p);
-    for (const [dc, dr] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ] as const) {
-      const n = { col: p.col + dc, row: p.row + dr };
-      const key = `${n.col},${n.row}`;
-      if (seen.has(key)) continue;
-      if (tileAt(board, n)?.color !== start.color) continue;
-      seen.add(key);
-      stack.push(n);
-    }
-  }
-  return group;
+/** Inverse of parseGrid (ids dropped). */
+export function gridText(grid: Grid): string[] {
+  return grid.map((row) =>
+    row
+      .map((t) => {
+        if (t.kind === 'rainbow') return '*';
+        if (t.kind === 'row') return String.fromCharCode(65 + t.color!);
+        if (t.kind === 'col') return String.fromCharCode(97 + t.color!);
+        return String(t.color);
+      })
+      .join(''),
+  );
 }
 
-export function hasMoves(board: Board): boolean {
-  for (let c = 0; c < board.length; c++) {
-    const col = board[c]!;
-    for (let r = 0; r < col.length; r++) {
-      const color = col[r]!.color;
-      if (col[r + 1]?.color === color) return true;
-      if (board[c + 1]?.[r]?.color === color) return true;
-    }
-  }
-  return false;
-}
-
-/** Removes the group at pos; returns null when there is no group of at least 2 tiles. */
-export function removeGroup(board: Board, pos: Pos): MoveResult | null {
-  const group = findGroup(board, pos);
-  if (group.length < 2) return null;
-  const del = new Set(group.map((p) => `${p.col},${p.row}`));
-  const removed = group.map((p) => ({ id: tileAt(board, p)!.id, pos: p }));
-  const moved: MovedTile[] = [];
-  const next: Board = [];
-  board.forEach((col, c) => {
-    const kept: { tile: Tile; from: Pos; afterFall: Pos }[] = [];
-    col.forEach((tile, r) => {
-      if (del.has(`${c},${r}`)) return;
-      kept.push({ tile, from: { col: c, row: r }, afterFall: { col: c, row: kept.length } });
-    });
-    if (!kept.length) return;
-    const newCol = next.length;
-    for (const k of kept) {
-      const to = { col: newCol, row: k.afterFall.row };
-      if (to.col !== k.from.col || to.row !== k.from.row) {
-        moved.push({ id: k.tile.id, from: k.from, afterFall: k.afterFall, to });
+/** Every maximal straight run of ≥3 same-coloured tiles; rainbow tiles never match (A-8). */
+export function findLines(grid: Grid): Line[] {
+  const lines: Line[] = [];
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+  const scan = (dir: 'h' | 'v', outer: number, inner: number, at: (o: number, i: number) => Pos): void => {
+    for (let o = 0; o < outer; o++) {
+      let i = 0;
+      while (i < inner) {
+        const color = tileAt(grid, at(o, i))!.color;
+        let j = i + 1;
+        while (j < inner && color !== null && tileAt(grid, at(o, j))!.color === color) j++;
+        if (color !== null && j - i >= 3) {
+          const cells: Pos[] = [];
+          for (let k = i; k < j; k++) cells.push(at(o, k));
+          lines.push({ dir, color, cells });
+        }
+        i = j;
       }
     }
-    next.push(kept.map((k) => k.tile));
-  });
-  return { removed, moved, gained: scoreFor(group.length), board: next, levelEnded: !hasMoves(next) };
-}
-
-const MAX_ATTEMPTS = 50;
-
-/** Random full board with at least 2 colours and at least one removable group (TD-005). */
-export function generateBoard(cols: number, rows: number, colors: number, rng: Rng, firstId = 0): Board {
-  const roll = () => {
-    let id = firstId;
-    const b: Board = [];
-    for (let c = 0; c < cols; c++) {
-      const col: Tile[] = [];
-      for (let r = 0; r < rows; r++) {
-        col.push({ id: id++, color: Math.min(colors - 1, Math.floor(rng() * colors)) as ColorId });
-      }
-      b.push(col);
-    }
-    return b;
   };
-  const valid = (b: Board) => new Set(b.flat().map((t) => t.color)).size >= 2 && hasMoves(b);
-  let b = roll();
-  for (let i = 1; i < MAX_ATTEMPTS && !valid(b); i++) b = roll();
-  if (!valid(b)) {
-    // Fallback for degenerate randomness: a bottom-left pair plus a second colour elsewhere.
-    const base = b[0]![0]!.color;
-    if (rows > 1) b[0]![1]!.color = base;
-    else b[1]![0]!.color = base;
-    b[cols - 1]![rows - 1]!.color = ((base + 1) % colors) as ColorId;
+  scan('h', rows, cols, (o, i) => ({ row: o, col: i }));
+  scan('v', cols, rows, (o, i) => ({ row: i, col: o }));
+  return lines;
+}
+
+export function swapped(grid: Grid, a: Pos, b: Pos): Grid {
+  const next = cloneGrid(grid);
+  const ta = tileAt(grid, a)!;
+  next[a.row]![a.col] = tileAt(grid, b)!;
+  next[b.row]![b.col] = ta;
+  return next;
+}
+
+/**
+ * Valid swap (TD-003): adjacent; exactly one side rainbow, or the swap forms a
+ * line of ≥3. Two rainbow tiles never swap (A-9).
+ */
+export function isValidSwap(grid: Grid, a: Pos, b: Pos): boolean {
+  if (!inside(grid, a) || !inside(grid, b) || !isAdjacent(a, b)) return false;
+  const ra = tileAt(grid, a)!.kind === 'rainbow';
+  const rb = tileAt(grid, b)!.kind === 'rainbow';
+  if (ra && rb) return false;
+  if (ra || rb) return true;
+  return findLines(swapped(grid, a, b)).length > 0;
+}
+
+/** All valid swaps, scanned row-major, rightward before downward (TD-016). */
+export function findMoves(grid: Grid): Move[] {
+  const moves: Move[] = [];
+  for (let row = 0; row < grid.length; row++)
+    for (let col = 0; col < grid[row]!.length; col++) {
+      const p = { row, col };
+      for (const q of [
+        { row, col: col + 1 },
+        { row: row + 1, col },
+      ])
+        if (isValidSwap(grid, p, q)) moves.push([p, q]);
+    }
+  return moves;
+}
+
+export function hasMove(grid: Grid): boolean {
+  return findMoves(grid).length > 0;
+}
+
+/** A playable resting board: no line on it and at least one valid swap (A-10). */
+export function isPlayable(grid: Grid): boolean {
+  return findLines(grid).length === 0 && hasMove(grid);
+}
+
+export function randomColor(colors: number, rng: Rng): ColorId {
+  return Math.min(colors - 1, Math.floor(rng() * colors)) as ColorId;
+}
+
+/** Random full board without lines and with at least one valid swap (TD-008). */
+export function generateGrid(rows: number, cols: number, colors: number, rng: Rng, firstId = 0): Grid {
+  const roll = (): Grid => {
+    let id = firstId;
+    const grid: Grid = [];
+    for (let r = 0; r < rows; r++) {
+      const row: Tile[] = [];
+      grid.push(row);
+      for (let c = 0; c < cols; c++) {
+        const banned = new Set<ColorId | null>();
+        if (c >= 2 && row[c - 1]!.color === row[c - 2]!.color) banned.add(row[c - 1]!.color);
+        if (r >= 2 && grid[r - 1]![c]!.color === grid[r - 2]![c]!.color) banned.add(grid[r - 1]![c]!.color);
+        const allowed = [...Array(colors).keys()].filter((k) => !banned.has(k as ColorId));
+        const color = allowed[Math.min(allowed.length - 1, Math.floor(rng() * allowed.length))] as ColorId;
+        row.push({ id: id++, kind: 'normal', color });
+      }
+    }
+    return grid;
+  };
+  let grid = roll();
+  for (let i = 1; i < MAX_GENERATE && !isPlayable(grid); i++) grid = roll();
+  return isPlayable(grid) ? grid : shuffleGrid(grid, colors, rng);
+}
+
+/**
+ * Rearranges the existing tiles (Fisher–Yates) until the board is playable
+ * (TD-008, A-10). As a last resort normal tiles are recoloured in place while
+ * special tiles keep their positions.
+ */
+export function shuffleGrid(grid: Grid, colors: number, rng: Rng): Grid {
+  const rows = grid.length;
+  const cols = grid[0]?.length ?? 0;
+  const tiles = grid.flat();
+  const layout = (list: Tile[]): Grid =>
+    Array.from({ length: rows }, (_, r) => list.slice(r * cols, (r + 1) * cols));
+  for (let attempt = 0; attempt < MAX_SHUFFLE; attempt++) {
+    const list = tiles.slice();
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [list[i], list[j]] = [list[j]!, list[i]!];
+    }
+    const next = layout(list);
+    if (isPlayable(next)) return next;
   }
-  return b;
+  let next = grid;
+  for (let attempt = 0; attempt < MAX_SHUFFLE && !isPlayable(next); attempt++)
+    next = grid.map((row) => row.map((t) => (t.kind === 'normal' ? { ...t, color: randomColor(colors, rng) } : t)));
+  return next;
 }

@@ -1,7 +1,10 @@
-import { findGroup, type Board, type Pos } from '../../src/game/board';
+import { findMoves, type Grid, type Pos } from '../../src/game/board';
+import { MAX_ROUNDS } from '../../src/game/cascade';
+import { LEVEL_END_PAUSE_MS, MOVE_SETTLE_MS, SHUFFLE_MS, SWAP_MS } from '../../src/ui/timing';
 
+/** Tile button whose accessible name ends with "第{row+1}行第{col+1}列". */
 export function tileIn(root: HTMLElement, p: Pos): HTMLButtonElement {
-  const label = new RegExp(`第${10 - p.row}行第${p.col + 1}列$`);
+  const label = new RegExp(`第${p.row + 1}行第${p.col + 1}列$`);
   const el = [...root.querySelectorAll<HTMLButtonElement>('button.tile')].find((b) =>
     label.test(b.getAttribute('aria-label')!),
   );
@@ -23,29 +26,39 @@ export function tapEl(el: Element, init: PointerEventInit = {}): void {
   doc.elementFromPoint = orig;
 }
 
-export function findMove(b: Board, min = 2): Pos | null {
-  for (let c = 0; c < b.length; c++)
-    for (let r = 0; r < b[c]!.length; r++) if (findGroup(b, { col: c, row: r }).length >= min) return { col: c, row: r };
+/**
+ * Drags from a tile by (dx, dy) pixels and releases (TD-011). happy-dom has no
+ * layout, so tiles measure 0 px and the 8 px minimum threshold applies.
+ */
+export function drag(root: HTMLElement, from: Pos, dx: number, dy: number, end: 'pointerup' | 'pointercancel' = 'pointerup'): void {
+  const el = tileIn(root, from);
+  pointer(el, 'pointerdown', { clientX: 100, clientY: 100 });
+  pointer(el, 'pointermove', { clientX: 100 + dx / 2, clientY: 100 + dy / 2 });
+  pointer(el, 'pointermove', { clientX: 100 + dx, clientY: 100 + dy });
+  pointer(el, end, { clientX: 100 + dx, clientY: 100 + dy });
+}
+
+/** Swaps two tiles by tapping one and then the other (A-11). */
+export function tapSwap(root: HTMLElement, a: Pos, b: Pos): void {
+  tapEl(tileIn(root, a));
+  tapEl(tileIn(root, b));
+}
+
+/** First valid swap on the grid. */
+export function firstMove(grid: Grid): [Pos, Pos] {
+  const move = findMoves(grid)[0];
+  if (!move) throw new Error('no valid swap');
+  return move;
+}
+
+/** An adjacent swap that forms no line, or null. */
+export function invalidSwap(grid: Grid): [Pos, Pos] | null {
+  const valid = new Set(findMoves(grid).map(([a, b]) => `${a.row},${a.col}-${b.row},${b.col}`));
+  for (let row = 0; row < grid.length; row++)
+    for (let col = 0; col + 1 < grid[row]!.length; col++)
+      if (!valid.has(`${row},${col}-${row},${col + 1}`)) return [{ row, col }, { row, col: col + 1 }];
   return null;
 }
 
-export function findSingle(b: Board): Pos | null {
-  for (let c = 0; c < b.length; c++)
-    for (let r = 0; r < b[c]!.length; r++) if (findGroup(b, { col: c, row: r }).length === 1) return { col: c, row: r };
-  return null;
-}
-
-/** A removable group that has at least one tile above it in some column (so something falls). */
-export function findMoveWithFall(b: Board): Pos | null {
-  for (let c = 0; c < b.length; c++)
-    for (let r = 0; r < b[c]!.length; r++) {
-      const g = findGroup(b, { col: c, row: r });
-      if (g.length >= 2 && g.some((p) => p.row < b[p.col]!.length - 1 && !g.some((q) => q.col === p.col && q.row > p.row)))
-        return { col: c, row: r };
-    }
-  return null;
-}
-
-export function highlighted(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>('[data-state="highlighted"]')];
-}
+/** Enough fake time for any cascade sequence plus the level-end pause. */
+export const SETTLE_ALL_MS = SWAP_MS + MAX_ROUNDS * MOVE_SETTLE_MS + SHUFFLE_MS + LEVEL_END_PAUSE_MS + 10;

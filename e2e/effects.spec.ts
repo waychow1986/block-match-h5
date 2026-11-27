@@ -1,113 +1,116 @@
 import { expect, test, type Page } from '@playwright/test';
-import { board, findGroup, groupAt, readGrid, readNumber, tile, waitSettled, type Cell, type Grid } from './helpers';
+import { board, dragSwap, findSwap, isValidSwap, readGrid, readNumber, tileAt, waitSettled, type Cell } from './helpers';
 
-const highlightedCount = (page: Page): Promise<number> => board(page).locator('[data-state="highlighted"]').count();
+const isTouch = (name: string): boolean => name === 'mobile';
+const hinted = (page: Page) => board(page).locator('[data-state="hint"]');
 
-/** A removable group whose topmost cell in some column has a tile above it (so that tile falls). */
-function groupWithFall(grid: Grid): { cell: Cell; above: Cell } | null {
-  for (let row = 1; row <= 10; row++)
-    for (let col = 1; col <= 10; col++) {
-      const g = groupAt(grid, { row, col });
-      if (g.length < 2) continue;
-      for (const c of g) {
-        const isTop = !g.some((o) => o.col === c.col && o.row < c.row);
-        if (isTop && c.row > 1 && grid[c.row - 2]![c.col - 1]) return { cell: c, above: { row: c.row - 1, col: c.col } };
-      }
-    }
-  return null;
+interface Sample {
+  t: number;
+  x: number;
+  y: number;
+  minOpacity: number;
+  floats: string[];
 }
 
-test.describe('AC-11 highlighting', () => {
-  test('mouse hover and press highlight the whole group; singles and release outside do not', async ({ page }, info) => {
-    test.skip(info.project.name !== 'desktop', 'mouse only');
+/** Samples, on every animation frame for `ms`, a tile's position plus the lowest tile opacity and "+N" floats. */
+async function startSampling(page: Page, cell: Cell, ms: number): Promise<void> {
+  const label = await tileAt(page, cell).getAttribute('aria-label');
+  await page.evaluate(
+    ({ label, ms }) => {
+      const out: Sample[] = [];
+      (window as unknown as { __samples: Sample[] }).__samples = out;
+      const el = [...document.querySelectorAll('.tile')].find((e) => e.getAttribute('aria-label') === label)!;
+      const t0 = performance.now();
+      const tick = (): void => {
+        const r = el.getBoundingClientRect();
+        const ops = [...document.querySelectorAll('.tile')].map((e) => Number(getComputedStyle(e).opacity));
+        const floats = [...document.querySelectorAll('.score-float')].map((e) => e.textContent ?? '');
+        out.push({ t: performance.now() - t0, x: r.x, y: r.y, minOpacity: Math.min(...ops), floats });
+        if (performance.now() - t0 < ms) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    },
+    { label, ms },
+  );
+}
+
+async function samples(page: Page): Promise<Sample[]> {
+  return page.evaluate(() => (window as unknown as { __samples: Sample[] }).__samples);
+}
+
+test.describe('AC-19 swap animation', () => {
+  test('valid swap moves continuously, fades removed tiles and shows +N; invalid swap bounces', async ({ page }, info) => {
+    const touch = isTouch(info.project.name);
     await page.goto('/');
     const grid = await readGrid(page);
-    const start = findGroup(grid)!;
-    const group = groupAt(grid, start);
-    const target = tile(page, grid, start);
-    const before = await target.evaluate((el) => getComputedStyle(el).filter);
+    const [a, b] = findSwap(grid)!;
+    const start = (await tileAt(page, a).boundingBox())!;
+    const target = (await tileAt(page, b).boundingBox())!;
+    const score0 = await readNumber(page, '本关得分');
 
-    await target.hover();
-    await expect.poll(() => highlightedCount(page)).toBe(group.length);
-    for (const c of group) await expect(tile(page, grid, c)).toHaveAttribute('data-state', 'highlighted');
-    expect(await target.evaluate((el) => getComputedStyle(el).filter)).not.toBe(before);
-
-    const single = findGroup(grid, (n) => n === 1)!;
-    await tile(page, grid, single).hover();
-    await expect.poll(() => highlightedCount(page)).toBe(0);
-    await page.mouse.down();
-    expect(await highlightedCount(page)).toBe(0);
-    await page.mouse.up();
-
-    await target.hover();
-    await page.mouse.down();
-    await expect.poll(() => highlightedCount(page)).toBe(group.length);
-    await page.mouse.move(2, 2, { steps: 5 });
-    await page.mouse.up();
-    await expect.poll(() => highlightedCount(page)).toBe(0);
-    expect(await readNumber(page, '当前分数')).toBe(0);
-  });
-
-  test('touch press-and-hold highlights the group; lifting removes it', async ({ page }, info) => {
-    test.skip(info.project.name !== 'mobile', 'touch only');
-    await page.goto('/');
-    const grid = await readGrid(page);
-    const start = findGroup(grid)!;
-    const n = groupAt(grid, start).length;
-    const box = (await tile(page, grid, start).boundingBox())!;
-    const cdp = await page.context().newCDPSession(page);
-    const point = [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }];
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point });
-    await page.waitForTimeout(500);
-    expect(await highlightedCount(page)).toBe(n);
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await startSampling(page, a, 1500);
+    await dragSwap(page, a, b, touch);
     await waitSettled(page);
-    expect(await readNumber(page, '当前分数')).toBe(10 * n * n);
-    expect(await highlightedCount(page)).toBe(0);
+    await page.waitForTimeout(800);
+    const s = await samples(page);
+    const axis = a.row === b.row ? 'x' : 'y';
+    const from = axis === 'x' ? start.x : start.y;
+    const to = axis === 'x' ? target.x : target.y;
+    const lo = Math.min(from, to) + 2;
+    const hi = Math.max(from, to) - 2;
+    expect(s.some((p) => p[axis] > lo && p[axis] < hi), 'an intermediate position during the swap').toBe(true);
+    expect(s.some((p) => p.minOpacity > 0.05 && p.minOpacity < 0.95), 'removed tiles fade').toBe(true);
+    const floats = new Set(s.flatMap((p) => p.floats));
+    expect([...floats].some((f) => /^\+\d+$/.test(f))).toBe(true);
+    expect(await readNumber(page, '本关得分')).toBeGreaterThan(score0);
+
+    // Invalid swap: moves part-way and returns to its start.
+    const g2 = await readGrid(page);
+    let bad: [Cell, Cell] | null = null;
+    for (let row = 1; row <= 8 && !bad; row++)
+      for (let col = 1; col < 8 && !bad; col++) {
+        const x = { row, col };
+        const y = { row, col: col + 1 };
+        if (g2[row - 1]![col - 1]?.kind === 'normal' && g2[row - 1]![col]?.kind === 'normal' && !isValidSwap(g2, x, y))
+          bad = [x, y];
+      }
+    expect(bad).not.toBeNull();
+    const home = (await tileAt(page, bad![0]).boundingBox())!;
+    const width = home.width;
+    await startSampling(page, bad![0], 800);
+    await dragSwap(page, bad![0], bad![1], touch);
+    await waitSettled(page);
+    await page.waitForTimeout(400);
+    const s2 = await samples(page);
+    expect(s2.some((p) => p.x > home.x + 2 && p.x < home.x + width - 2), 'an intermediate bounce position').toBe(true);
+    expect(Math.abs(s2.at(-1)!.x - home.x)).toBeLessThan(1);
+    expect(await readGrid(page)).toEqual(g2);
   });
 });
 
-test('AC-12 removal, fall and score are animated through intermediate states', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop', 'desktop sampling');
-  await page.goto('/');
-  const grid = await readGrid(page);
-  const pick = groupWithFall(grid)!;
-  const n = groupAt(grid, pick.cell).length;
-  const removed = tile(page, grid, pick.cell);
-  const falling = tile(page, grid, pick.above);
-  await removed.evaluate((r, f) => {
-    const w = window as unknown as {
-      samples: { opacity: number; top: number; float: string | null; score: number }[];
-    };
-    const scoreEl = document.querySelector('[role="status"][aria-label="当前分数"]')!;
-    w.samples = [];
-    const t0 = performance.now();
-    const step = (): void => {
-      w.samples.push({
-        opacity: r.isConnected ? Number(getComputedStyle(r).opacity) : -1,
-        top: (f as HTMLElement).getBoundingClientRect().top,
-        float: document.querySelector('.score-float')?.textContent ?? null,
-        score: Number(scoreEl.textContent),
-      });
-      if (performance.now() - t0 < 1500) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  }, await falling.elementHandle());
-  const topBefore = (await falling.boundingBox())!.y;
-  await removed.click();
-  await page.waitForTimeout(1600);
-  const samples = await page.evaluate(
-    () =>
-      (window as unknown as { samples: { opacity: number; top: number; float: string | null; score: number }[] })
-        .samples,
-  );
-  const topAfter = samples.at(-1)!.top;
-  expect(topAfter).toBeGreaterThan(topBefore + 1);
-  expect(samples.some((s) => s.opacity > 0 && s.opacity < 1)).toBe(true);
-  expect(samples.some((s) => s.top > topBefore + 1 && s.top < topAfter - 1)).toBe(true);
-  expect(samples.some((s) => s.float === `+${10 * n * n}`)).toBe(true);
-  // The "当前分数" status text passes through intermediate values before the final one (TD-007).
-  const mids = new Set(samples.map((s) => s.score).filter((v) => v > 0 && v < 10 * n * n));
-  expect(mids.size).toBeGreaterThanOrEqual(2);
-  expect(samples.at(-1)!.score).toBe(10 * n * n);
+test.describe('AC-15 hint', () => {
+  test('after 5 s without input a valid swap pair is hinted; pressing clears it', async ({ page }, info) => {
+    const touch = isTouch(info.project.name);
+    await page.clock.install();
+    await page.goto('/');
+    await expect(board(page).getByRole('button')).toHaveCount(64);
+    await page.clock.runFor(4000);
+    await expect(hinted(page)).toHaveCount(0);
+    await page.clock.runFor(2000);
+    await expect(hinted(page)).toHaveCount(2);
+    const cells = await hinted(page).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label') ?? ''));
+    const pos = cells.map((l) => {
+      const m = /第(\d+)行第(\d+)列$/.exec(l)!;
+      return { row: Number(m[1]), col: Number(m[2]) };
+    });
+    expect(isValidSwap(await readGrid(page), pos[0]!, pos[1]!)).toBe(true);
+    await expect(hinted(page).first()).toHaveAttribute('aria-describedby', /.+/);
+
+    await tileAt(page, { row: 8, col: 8 })[touch ? 'tap' : 'click']();
+    await expect(hinted(page)).toHaveCount(0);
+    await page.clock.runFor(4000);
+    await expect(hinted(page)).toHaveCount(0);
+    await page.clock.runFor(2000);
+    await expect(hinted(page)).toHaveCount(2);
+  });
 });

@@ -1,47 +1,70 @@
-import { generateBoard, removeGroup, type Board, type MoveResult, type Pos } from './board';
-import { COLS, ROWS, colorsFor, targetFor } from './levels';
+import { findMoves, generateGrid, isValidSwap, type Grid, type Move, type Pos } from './board';
+import { resolveSwap, type Resolution } from './cascade';
+import { COLS, ROWS, colorsFor, movesFor, targetFor } from './levels';
 import type { Rng } from './rng';
 
-export type Phase = 'playing' | 'levelCleared' | 'gameOver';
+export type Phase = 'playing' | 'levelCleared' | 'levelFailed';
+
 export interface GameState {
   level: number;
   score: number;
   target: number;
+  movesLeft: number;
   colors: number;
-  board: Board;
+  grid: Grid;
   phase: Phase;
-  /** Next unused tile id; keeps ids unique within a page session. */
+  /** Next unused tile id; ids are unique within a page session. */
   nextId: number;
 }
 
-function startLevel(level: number, score: number, rng: Rng, firstId: number): GameState {
+export type SwapOutcome = { kind: 'invalid' } | { kind: 'valid'; state: GameState; resolution: Resolution };
+
+/** Fresh level with score 0 and a full move budget (AC-2, AC-13). */
+export function createGame(rng: Rng, level = 1, firstId = 0): GameState {
   const colors = colorsFor(level);
-  const board = generateBoard(COLS, ROWS, colors, rng, firstId);
-  return { level, score, target: targetFor(level), colors, board, phase: 'playing', nextId: firstId + COLS * ROWS };
+  const grid = generateGrid(ROWS, COLS, colors, rng, firstId);
+  return {
+    level,
+    score: 0,
+    target: targetFor(level),
+    movesLeft: movesFor(level),
+    colors,
+    grid,
+    phase: 'playing',
+    nextId: firstId + ROWS * COLS,
+  };
 }
 
-export function createGame(rng: Rng): GameState {
-  return startLevel(1, 0, rng, 0);
+/**
+ * One player swap (AC-4, AC-6, AC-7, AC-8, AC-9). Invalid swaps and swaps
+ * outside play leave the state untouched and cost no move. The level result is
+ * decided after all cascades and any shuffle (TD-009, R1).
+ */
+export function swapTiles(state: GameState, a: Pos, b: Pos, rng: Rng): SwapOutcome {
+  if (state.phase !== 'playing' || state.movesLeft <= 0) return { kind: 'invalid' };
+  if (!isValidSwap(state.grid, a, b)) return { kind: 'invalid' };
+  const { resolution, grid, nextId } = resolveSwap(state.grid, a, b, {
+    colors: state.colors,
+    rng,
+    nextId: state.nextId,
+  });
+  const score = state.score + resolution.gained;
+  const movesLeft = state.movesLeft - 1;
+  const phase: Phase = score >= state.target ? 'levelCleared' : movesLeft === 0 ? 'levelFailed' : 'playing';
+  return { kind: 'valid', state: { ...state, grid, score, movesLeft, phase, nextId }, resolution };
 }
 
-/** Level end decision (FR-017): reaching the target exactly counts as cleared. */
-export function levelOutcome(score: number, target: number): Phase {
-  return score >= target ? 'levelCleared' : 'gameOver';
-}
-
-export function tryRemove(state: GameState, pos: Pos): { state: GameState; result: MoveResult } | null {
-  if (state.phase !== 'playing') return null;
-  const result = removeGroup(state.board, pos);
-  if (!result) return null;
-  const score = state.score + result.gained;
-  const phase = result.levelEnded ? levelOutcome(score, state.target) : 'playing';
-  return { state: { ...state, score, board: result.board, phase }, result };
-}
-
+/** Next level after a clear; the level score starts again from 0. */
 export function nextLevel(state: GameState, rng: Rng): GameState {
-  return startLevel(state.level + 1, state.score, rng, state.nextId);
+  return createGame(rng, state.level + 1, state.nextId);
 }
 
-export function restart(state: GameState, rng: Rng): GameState {
-  return startLevel(1, 0, rng, state.nextId);
+/** Same level again from 0 with a new board (AC-11). */
+export function retryLevel(state: GameState, rng: Rng): GameState {
+  return createGame(rng, state.level, state.nextId);
+}
+
+/** The first valid swap in row-major order, rightward before downward (TD-016). */
+export function hintMove(grid: Grid): Move | null {
+  return findMoves(grid)[0] ?? null;
 }

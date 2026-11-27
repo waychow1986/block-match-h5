@@ -14,22 +14,54 @@ body {
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
-html,
-body {
-  height: 100vh;
-  height: 100dvh;
-}
-
+/* TD-015: the first screen holds title, HUD and board; "怎么玩" follows below (vertical scroll only). */
 .game {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+  padding: 0 8px max(8px, env(safe-area-inset-bottom));
   touch-action: manipulation;
+}
+
+.first-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  padding: max(6px, env(safe-area-inset-top)) 0 8px;
+}
+
+.game-title {
+  flex: none;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 50%);
+}
+
+.intro {
+  width: 100%;
+  max-width: 640px;
+  padding: 4px 8px 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.intro h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.intro ul {
+  margin: 0;
+  padding-left: 1.2em;
 }
 
 .hud {
@@ -126,8 +158,8 @@ body {
   position: absolute;
   left: 0;
   top: 0;
-  width: 10%;
-  height: 10%;
+  width: 12.5%;
+  height: 12.5%;
   padding: 0;
   border: 2px solid transparent;
   border-radius: 18%;
@@ -150,6 +182,7 @@ body {
   pointer-events: none;
 }
 
+.tile[aria-pressed='true'],
 .tile[data-state='highlighted'] {
   z-index: 1;
   scale: 1.06;
@@ -164,6 +197,47 @@ body {
   animation: tile-appear 220ms ease-out;
 }
 
+/* Cascade round removal (TD-012): fade and shrink before the tile is dropped. */
+.tile.removing {
+  pointer-events: none;
+  animation: tile-remove 180ms ease-in forwards;
+}
+
+@keyframes tile-remove {
+  to {
+    opacity: 0;
+    scale: 0.3;
+  }
+}
+
+/* Idle hint (TD-016): a gentle looping pulse on the two hinted tiles. */
+.tile[data-state='hint'] {
+  z-index: 1;
+  animation: tile-hint 700ms ease-in-out infinite alternate;
+}
+
+@keyframes tile-hint {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.12;
+    filter: brightness(1.2);
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 @keyframes tile-appear {
   from {
     opacity: 0;
@@ -176,6 +250,36 @@ body {
 .color-2 { --base: #30a46c; --hi: #6fcf9e; --lo: #237a50; }
 .color-3 { --base: #3e63dd; --hi: #7d97ee; --lo: #2d4bb0; }
 .color-4 { --base: #8e4ec6; --hi: #b88ae0; --lo: #6c3a99; }
+.color-5 { --base: #f76b15; --hi: #ffa057; --lo: #c4540f; }
+
+/* Special tiles (TD-002): row/col stripes and a multi-colour rainbow tile. */
+.tile[data-kind='row']::after,
+.tile[data-kind='col']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.tile[data-kind='row']::after {
+  background: linear-gradient(180deg, transparent 38%, rgb(255 255 255 / 85%) 38% 62%, transparent 62%);
+}
+.tile[data-kind='col']::after {
+  background: linear-gradient(90deg, transparent 38%, rgb(255 255 255 / 85%) 38% 62%, transparent 62%);
+}
+.tile[data-kind='rainbow'] {
+  background-image: conic-gradient(#e5484d, #f5b300, #30a46c, #3e63dd, #8e4ec6, #f76b15, #e5484d);
+}
+/* TD-014: white five-pointed star on the rainbow tile. */
+.tile[data-kind='rainbow']::after {
+  content: '';
+  position: absolute;
+  inset: 18%;
+  background: #fff;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 40%));
+  pointer-events: none;
+}
 
 /* "+N" score float (TD-007). */
 .score-float {
@@ -227,6 +331,7 @@ body {
   font-size: 24px;
 }
 
+.overlay-level,
 .overlay-score {
   margin: 0;
   font-size: 18px;

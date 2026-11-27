@@ -1,61 +1,89 @@
+import type { Pos } from '../game/board';
+
+/** Share of the tile edge a pointer must travel before a drag counts (TD-011). */
+export const DRAG_RATIO = 0.35;
+/** Minimum drag distance in px, whatever the tile size. */
+export const DRAG_MIN_PX = 8;
+
+export interface SwapInputHandlers {
+  /** Position of a tile element, or null when the element is not a tile. */
+  positionOf: (el: Element | null) => Pos | null;
+  onTap: (tile: HTMLElement) => void;
+  /** A drag/swipe from `from` towards the adjacent `to` (always on the board). */
+  onSwap: (from: Pos, to: Pos) => void;
+}
+
 /**
- * Pointer Events tap detection (TD-008): a tap counts only when pointerdown and
- * pointerup land on the same tile; pointercancel aborts the gesture. Release is
- * watched on the document so a press released outside the board is reset.
- *
- * Highlight requests (AC-11): mouse hover asks for the tile under the pointer;
- * a press of any pointer type asks for the pressed tile; `null` clears.
+ * Pointer Events swap input (TD-011). A press on a tile starts a gesture; once
+ * the pointer has moved past the threshold, the main axis picks the neighbour
+ * and the gesture ends (dragging off the board swaps nothing). Released below
+ * the threshold on the pressed tile it is a tap. pointercancel aborts.
  */
-export function attachTapInput(
-  board: HTMLElement,
-  resolve: (el: Element | null) => HTMLElement | null,
-  onTap: (tile: HTMLElement) => void,
-  onHighlight: (tile: HTMLElement | null) => void = () => undefined,
-): () => void {
+export function attachSwapInput(board: HTMLElement, rows: number, cols: number, h: SwapInputHandlers): () => void {
   const doc = board.ownerDocument;
-  let pressed: HTMLElement | null = null;
-  let pointerId: number | null = null;
+  let gesture: { id: number; tile: HTMLElement; pos: Pos; x: number; y: number } | null = null;
+
+  const end = (): void => {
+    if (gesture) {
+      try {
+        board.releasePointerCapture?.(gesture.id);
+      } catch {
+        // Capture may already be gone.
+      }
+    }
+    gesture = null;
+  };
 
   const down = (e: PointerEvent): void => {
     if (e.button !== undefined && e.button > 0) return;
-    pressed = resolve(e.target as Element | null);
-    pointerId = e.pointerId;
-    onHighlight(pressed);
-    if (pressed) e.preventDefault();
+    const target = e.target as Element | null;
+    const pos = h.positionOf(target);
+    if (!pos) return;
+    e.preventDefault();
+    gesture = { id: e.pointerId, tile: target!.closest('.tile') as HTMLElement, pos, x: e.clientX, y: e.clientY };
+    try {
+      board.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Not every pointer can be captured; document listeners still see it.
+    }
   };
+
+  const move = (e: PointerEvent): void => {
+    if (!gesture || e.pointerId !== gesture.id) return;
+    const dx = e.clientX - gesture.x;
+    const dy = e.clientY - gesture.y;
+    const size = gesture.tile.getBoundingClientRect().width;
+    const threshold = Math.max(DRAG_MIN_PX, size * DRAG_RATIO);
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < threshold) return;
+    const from = gesture.pos;
+    end();
+    const to =
+      Math.abs(dx) >= Math.abs(dy)
+        ? { row: from.row, col: from.col + Math.sign(dx) }
+        : { row: from.row + Math.sign(dy), col: from.col };
+    if (to.row < 0 || to.col < 0 || to.row >= rows || to.col >= cols) return;
+    h.onSwap(from, to);
+  };
+
   const up = (e: PointerEvent): void => {
-    if (!pressed || e.pointerId !== pointerId) return;
-    const start = pressed;
-    pressed = null;
-    pointerId = null;
-    const under = resolve(doc.elementFromPoint(e.clientX, e.clientY));
-    onHighlight(null);
-    if (under === start) onTap(start);
-    else if (e.pointerType === 'mouse' && under) onHighlight(under);
+    if (!gesture || e.pointerId !== gesture.id) return;
+    const { tile } = gesture;
+    end();
+    const under = doc.elementFromPoint(e.clientX, e.clientY);
+    if (under && tile.contains(under)) h.onTap(tile);
   };
+
   const cancel = (e: PointerEvent): void => {
-    if (pointerId !== null && e.pointerId !== pointerId) return;
-    pressed = null;
-    pointerId = null;
-    onHighlight(null);
-  };
-  const over = (e: PointerEvent): void => {
-    if (pressed || e.pointerType !== 'mouse') return;
-    onHighlight(resolve(e.target as Element | null));
-  };
-  const leave = (): void => {
-    if (!pressed) onHighlight(null);
+    if (gesture && e.pointerId === gesture.id) end();
   };
 
   board.addEventListener('pointerdown', down);
-  board.addEventListener('pointerover', over);
-  board.addEventListener('pointerleave', leave);
+  doc.addEventListener('pointermove', move);
   doc.addEventListener('pointerup', up);
   doc.addEventListener('pointercancel', cancel);
   return () => {
     board.removeEventListener('pointerdown', down);
-    board.removeEventListener('pointerover', over);
-    board.removeEventListener('pointerleave', leave);
+    doc.removeEventListener('pointermove', move);
     doc.removeEventListener('pointerup', up);
     doc.removeEventListener('pointercancel', cancel);
   };

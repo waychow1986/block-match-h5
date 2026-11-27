@@ -1,40 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { colorsFor, targetFor, MAX_COLORS } from '../../src/game/levels';
+import { COLS, MIN_MOVES, ROWS, colorsFor, movesFor, targetFor } from '../../src/game/levels';
 
-// AC-9 developer check (test plan TS-19).
+// AC-2, AC-13 developer check (test plan TS-26).
 const MAX_L = 200;
-const required = (L: number) => targetFor(L) - (L === 1 ? 0 : targetFor(L - 1));
 
 describe('level parameters', () => {
-  it('level 1 has at least 2 colors and a positive target', () => {
-    expect(colorsFor(1)).toBeGreaterThanOrEqual(2);
-    expect(targetFor(1)).toBeGreaterThan(0);
+  it('the board is 8 x 8', () => {
+    expect(ROWS).toBe(8);
+    expect(COLS).toBe(8);
   });
 
-  it('for L = 1..200: colors never decrease, targets strictly increase, required points never decrease', () => {
+  it('every level uses 5 or 6 colours (AC-2)', () => {
+    for (let L = 1; L <= MAX_L; L++) expect([5, 6]).toContain(colorsFor(L));
+  });
+
+  it('for L = 1..200: targets strictly increase and moves never increase (AC-13)', () => {
     for (let L = 1; L < MAX_L; L++) {
-      expect(colorsFor(L + 1)).toBeGreaterThanOrEqual(colorsFor(L));
       expect(targetFor(L + 1)).toBeGreaterThan(targetFor(L));
-      // previous target of level 1 counts as 0 (G2 I15)
-      expect(required(L + 1)).toBeGreaterThanOrEqual(required(L));
+      expect(movesFor(L + 1)).toBeLessThanOrEqual(movesFor(L));
     }
   });
 
-  it('colors reach a cap and stay there; targets keep rising afterwards', () => {
-    let capLevel = 0;
-    for (let L = 1; L <= MAX_L; L++) {
-      expect(colorsFor(L)).toBeLessThanOrEqual(MAX_COLORS);
-      if (capLevel === 0 && colorsFor(L) === MAX_COLORS) capLevel = L;
-    }
-    expect(capLevel).toBeGreaterThan(1);
-    for (let L = capLevel; L < MAX_L; L++) {
-      expect(colorsFor(L + 1)).toBe(MAX_COLORS);
-      expect(targetFor(L + 1)).toBeGreaterThan(targetFor(L));
-    }
+  it('level 5 has fewer moves than level 1 (AC-13)', () => {
+    expect(movesFor(5)).toBeLessThan(movesFor(1));
   });
 
-  it('matches the documented values', () => {
-    expect([1, 2, 3, 4].map(colorsFor)).toEqual([3, 4, 5, 5]);
-    expect([1, 2, 3, 4, 5].map(targetFor)).toEqual([2000, 4500, 7500, 11000, 15000]);
+  it('moves stop at the floor once reached, while targets keep rising (Q2)', () => {
+    const floorLevel = [...Array(MAX_L).keys()].map((i) => i + 1).find((L) => movesFor(L) === MIN_MOVES)!;
+    expect(floorLevel).toBeGreaterThan(1);
+    for (let L = floorLevel; L <= MAX_L; L++) expect(movesFor(L)).toBe(MIN_MOVES);
+    expect(MIN_MOVES).toBeGreaterThan(0);
   });
 });

@@ -3,7 +3,7 @@
   "services": [
     {
       "name": "web",
-      "description": "方块消除小游戏的静态页面（nginx-unprivileged，非 root UID 101），提供 index.html、/assets/* 与 /healthz",
+      "description": "交换三消小游戏“方块换换”的静态页面（nginx-unprivileged，非 root UID 101），提供 index.html、/assets/* 与 /healthz",
       "build": {
         "context": ".",
         "file": "Dockerfile"

@@ -88,6 +88,18 @@ export async function activate(page: Page, target: Locator, touch: boolean): Pro
   else await target.click();
 }
 
+/** Plays the smallest available swap; if a lucky cascade cleared the level, first moves on via "下一关". */
+export async function weakSwap(page: Page, touch: boolean): Promise<void> {
+  if ((await dialog(page).count()) > 0) {
+    await activate(page, dialog(page).getByRole('button', { name: '下一关' }), touch);
+    await expect(dialog(page)).toHaveCount(0);
+  }
+  const move = pickSwap(await readGrid(page), 'weak');
+  expect(move, 'a valid swap exists').not.toBeNull();
+  await tapSwap(page, move![0], move![1], touch);
+  await waitSettled(page);
+}
+
 /** Swaps two adjacent tiles by tapping/clicking one and then the other (A-11). */
 export async function tapSwap(page: Page, a: Cell, b: Cell, touch: boolean): Promise<void> {
   await activate(page, tileAt(page, a), touch);

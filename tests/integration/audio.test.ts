@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountGame, type GameHandle } from '../../src/app';
 import { mulberry32 } from '../../src/game/rng';
-import { SETTLE_ALL_MS, firstMove, pointer, tapSwap } from './helpers';
+import { SETTLE_ALL_MS, firstMove, pointer, tapSwap, tileIn } from './helpers';
 
 /** Minimal stand-in for the browser's Web Audio API (happy-dom has none). */
 class FakeParam {
@@ -36,12 +36,25 @@ class FakeOsc extends FakeNode {
     if (when === undefined) this.stopsNow++;
   }
 }
+class FakeBufferSource extends FakeNode {
+  buffer: unknown = null;
+  start(): void {
+    log.silentStarts++;
+  }
+}
 class FakeCtx {
   state = 'suspended';
   currentTime = 0;
   destination = new FakeNode();
+  resumes = 0;
   constructor() {
     log.contexts.push(this);
+  }
+  createBuffer(channels: number, length: number, rate: number): object {
+    return { channels, length, rate };
+  }
+  createBufferSource(): FakeBufferSource {
+    return new FakeBufferSource();
   }
   createGain(): FakeGain {
     const g = new FakeGain();
@@ -54,11 +67,12 @@ class FakeCtx {
     return o;
   }
   resume(): Promise<void> {
+    this.resumes++;
     this.state = 'running';
     return Promise.resolve();
   }
 }
-let log: { starts: number; contexts: FakeCtx[]; oscs: FakeOsc[]; gains: FakeGain[] };
+let log: { starts: number; silentStarts: number; contexts: FakeCtx[]; oscs: FakeOsc[]; gains: FakeGain[] };
 
 let root: HTMLElement;
 let game: GameHandle;
@@ -79,7 +93,7 @@ function mount(): void {
 beforeEach(() => {
   vi.useFakeTimers();
   localStorage.clear();
-  log = { starts: 0, contexts: [], oscs: [], gains: [] };
+  log = { starts: 0, silentStarts: 0, contexts: [], oscs: [], gains: [] };
   vi.stubGlobal('AudioContext', FakeCtx);
   mount();
 });
@@ -90,15 +104,80 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('sound effects and mute (AC-14)', () => {
-  it('creates the AudioContext only on the first pointerdown and plays a sound on removal', () => {
-    expect(log.contexts).toHaveLength(0);
-    pointer(document.body, 'pointerdown');
+const touch = { pointerType: 'touch' } as const;
+const running = (): boolean => log.contexts.some((c) => c.state === 'running');
+
+describe('audio unlock only in user-activation events (TS-40, AC-21)', () => {
+  it('a finger pointerdown alone neither creates nor resumes the AudioContext', () => {
+    pointer(document.body, 'pointerdown', touch);
+    pointer(document.body, 'pointermove', touch);
+    pointer(document.body, 'pointercancel', touch);
+    expect(log.contexts.every((c) => c.resumes === 0)).toBe(true);
+    expect(running()).toBe(false);
+    expect(log.silentStarts).toBe(0);
+  });
+
+  it.each([
+    ['touchend', () => document.body.dispatchEvent(new Event('touchend', { bubbles: true }))],
+    ['finger pointerup', () => pointer(document.body, 'pointerup', touch)],
+    ['click', () => document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))],
+    ['keydown', () => document.body.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }))],
+    ['mousedown', () => document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))],
+  ])('%s resumes the AudioContext synchronously and plays a silent buffer', (_name, fire) => {
+    pointer(document.body, 'pointerdown', touch);
+    expect(running()).toBe(false);
+    fire();
+    expect(log.contexts).toHaveLength(1);
+    expect(log.contexts[0]!.resumes).toBe(1);
+    expect(log.contexts[0]!.state).toBe('running');
+    expect(log.silentStarts).toBe(1);
+    fire();
+    expect(log.contexts[0]!.resumes).toBe(1);
+  });
+
+  it('a finger swipe that removes tiles before lifting is heard once the finger lifts', () => {
+    const [a, b] = firstMove(game.state.grid);
+    const el = tileIn(root, a);
+    const dx = (b.col - a.col) * 40;
+    const dy = (b.row - a.row) * 40;
+    pointer(el, 'pointerdown', { ...touch, clientX: 100, clientY: 100 });
+    pointer(el, 'pointermove', { ...touch, clientX: 100 + dx, clientY: 100 + dy });
+    expect(running()).toBe(false);
+    expect(log.starts).toBeGreaterThan(0);
+    pointer(el, 'pointerup', { ...touch, clientX: 100 + dx, clientY: 100 + dy });
+    document.body.dispatchEvent(new Event('touchend', { bubbles: true }));
     expect(log.contexts).toHaveLength(1);
     expect(log.contexts[0]!.state).toBe('running');
+  });
+
+  it('resumes again after the system suspends or interrupts audio (app switch)', () => {
+    pointer(document.body, 'pointerup', touch);
+    const ctx = log.contexts[0]!;
+    ctx.state = 'interrupted';
+    pointer(document.body, 'pointerdown', touch);
+    expect(ctx.state).toBe('interrupted');
+    document.body.dispatchEvent(new Event('touchend', { bubbles: true }));
+    expect(ctx.state).toBe('running');
+    expect(ctx.resumes).toBe(2);
+    ctx.state = 'suspended';
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(ctx.state).toBe('running');
+  });
+
+  it('stops listening after destroy', () => {
+    game.destroy();
+    document.body.dispatchEvent(new Event('touchend', { bubbles: true }));
+    expect(log.contexts).toHaveLength(0);
+    mount();
+  });
+});
+
+describe('sound effects and mute (AC-14)', () => {
+  it('plays a sound on removal after the first press', () => {
     tapMove();
-    expect(log.starts).toBeGreaterThan(0);
     expect(log.contexts).toHaveLength(1);
+    expect(log.contexts[0]!.state).toBe('running');
+    expect(log.starts).toBeGreaterThan(0);
   });
 
   it('plays a sound when the level-cleared or level-failed dialog appears', () => {

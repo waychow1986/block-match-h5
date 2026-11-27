@@ -14,22 +14,54 @@ body {
   font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
-html,
-body {
-  height: 100vh;
-  height: 100dvh;
-}
-
+/* TD-015: the first screen holds title, HUD and board; "怎么玩" follows below (vertical scroll only). */
 .game {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
   width: 100%;
   max-width: 100%;
-  height: 100%;
-  padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+  padding: 0 8px max(8px, env(safe-area-inset-bottom));
   touch-action: manipulation;
+}
+
+.first-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  padding: max(6px, env(safe-area-inset-top)) 0 8px;
+}
+
+.game-title {
+  flex: none;
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-shadow: 0 2px 6px rgb(0 0 0 / 50%);
+}
+
+.intro {
+  width: 100%;
+  max-width: 640px;
+  padding: 4px 8px 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.intro h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.intro ul {
+  margin: 0;
+  padding-left: 1.2em;
 }
 
 .hud {
@@ -237,6 +269,16 @@ body {
 }
 .tile[data-kind='rainbow'] {
   background-image: conic-gradient(#e5484d, #f5b300, #30a46c, #3e63dd, #8e4ec6, #f76b15, #e5484d);
+}
+/* TD-014: white five-pointed star on the rainbow tile. */
+.tile[data-kind='rainbow']::after {
+  content: '';
+  position: absolute;
+  inset: 18%;
+  background: #fff;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 40%));
+  pointer-events: none;
 }
 
 /* "+N" score float (TD-007). */

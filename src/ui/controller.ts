@@ -8,6 +8,7 @@ import { createSound, type Sound } from '../audio/sound';
 import { BoardView } from './boardView';
 import { Hud } from './hud';
 import { attachSwapInput } from './input';
+import { createIntro, createTitle } from './intro';
 import { Overlay } from './overlay';
 import {
   FALL_MS,
@@ -26,6 +27,9 @@ const ICON_SOUND =
 const ICON_MUTED =
   '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l6 6M22 9l-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
+/** Events whose handlers may start Web Audio (HTML user activation, plus click). */
+const UNLOCK_EVENTS = ['touchend', 'pointerup', 'click', 'keydown', 'mousedown'] as const;
+
 /** Glue between game rules and the DOM. Input is ignored (not queued) while busy. */
 export class GameController {
   state: GameState;
@@ -43,6 +47,9 @@ export class GameController {
   private hintTimer: ReturnType<typeof setTimeout> | null = null;
   private detachInput: () => void;
   private readonly unlockAudio = (): void => this.sound.unlock();
+  private readonly onVisibility = (): void => {
+    if (this.doc.visibilityState !== 'hidden') this.sound.resume();
+  };
   /** Any press or key restarts the idle countdown; a press also clears a shown hint (TD-016). */
   private readonly onActivity = (e: Event): void => {
     if (e.type === 'pointerdown') this.boardView.showHint([]);
@@ -70,14 +77,20 @@ export class GameController {
     this.wrap.append(this.boardView.element);
     area.append(this.wrap);
     this.overlay = new Overlay(doc, this.wrap);
-    this.element.append(this.hud.element, area);
+    // First screen: title, HUD and the board in the space left (TD-015); "怎么玩" below it.
+    const screen = doc.createElement('div');
+    screen.className = 'first-screen';
+    screen.append(createTitle(doc), this.hud.element, area);
+    this.element.append(screen, createIntro(doc));
     this.detachInput = attachSwapInput(this.boardView.element, ROWS, COLS, {
       positionOf: (el) => this.boardView.positionOf(el),
       onTap: (tile) => this.onTap(tile),
       onSwap: (from, to) => this.onDragSwap(from, to),
     });
-    // Audio may only start after a user gesture (A-11): create/resume it on the first press.
-    doc.addEventListener('pointerdown', this.unlockAudio, true);
+    // Audio may only start in a user-activation event (TD-010); a finger's pointerdown is not one.
+    // Capture listeners on the document run before the board's own pointerup swap handler.
+    for (const type of UNLOCK_EVENTS) doc.addEventListener(type, this.unlockAudio, true);
+    doc.addEventListener('visibilitychange', this.onVisibility);
     doc.addEventListener('pointerdown', this.onActivity, true);
     doc.addEventListener('keydown', this.onActivity, true);
     this.render();
@@ -201,13 +214,13 @@ export class GameController {
     this.hud.update({ movesLeft: this.state.movesLeft, highScore: this.highScore.value });
     const { steps, shuffle } = outcome.resolution;
     // The first removal sound starts with the swap itself, so it answers the gesture at once.
-    if (steps[0]) this.sound.playRemove(steps[0].removed.length);
+    if (steps[0]) this.sound.playRemove(0);
     let t = SWAP_MS;
     steps.forEach((step, i) => {
       const from = score;
       score += step.gained;
       const to = score;
-      this.later(t, () => this.playRound(step, from, to, i > 0));
+      this.later(t, () => this.playRound(step, from, to, i));
       t += MOVE_SETTLE_MS;
     });
     if (shuffle) {
@@ -229,9 +242,10 @@ export class GameController {
   }
 
   /** One cascade round: removal with sound, float and score count, then fall and refill. */
-  private playRound(step: RoundStep, from: number, to: number, withSound: boolean): void {
+  private playRound(step: RoundStep, from: number, to: number, round: number): void {
     this.boardView.markRemoving(step.removed.map((r) => r.id));
-    if (withSound) this.sound.playRemove(step.removed.length);
+    // Round 0's sound already started with the swap itself.
+    if (round > 0) this.sound.playRemove(round);
     this.hud.countScore(from, to, SCORE_COUNT_MS);
     this.showGain(step);
     this.later(REMOVE_MS, () => {
@@ -275,7 +289,8 @@ export class GameController {
     this.timers.clear();
     this.hud.stopCount();
     this.detachInput();
-    this.doc.removeEventListener('pointerdown', this.unlockAudio, true);
+    for (const type of UNLOCK_EVENTS) this.doc.removeEventListener(type, this.unlockAudio, true);
+    this.doc.removeEventListener('visibilitychange', this.onVisibility);
     this.doc.removeEventListener('pointerdown', this.onActivity, true);
     this.doc.removeEventListener('keydown', this.onActivity, true);
     if (this.hintTimer !== null) clearTimeout(this.hintTimer);
